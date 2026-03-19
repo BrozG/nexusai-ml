@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+
+# Environments
+.env
+.env.local
+.env.*.local
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Large model files
+*.bin
+*.pt
+*.safetensors
+vector_stores/ecommerce-vector/embedding_model.pkl
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+*.temp
