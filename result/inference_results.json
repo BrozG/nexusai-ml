@@ -1,0 +1,53 @@
+{
+  "ecommerce": [
+    {
+      "question_no": 1,
+      "query": "I returned my shoes 10 days ago but no refund yet",
+      "response": "On it! Here's what we'll do to sort this out. Refund delays for returned items rarely happen for valid returns. Please share the return date, the reason why you returned it, and the exact amount you're waiting for. We'll check if the refund was processed correctly and if the hold is valid. If it's valid but unprocessed, we'll push it immediately and you'll receive a confirmation within minutes."
+    },
+    {
+      "question_no": 2,
+      "query": "My order was delivered but the item is damaged",
+      "response": "We know how important this is and we're working on it right now. Here's what we'll do: A damaged item for your order qualifies for full replacement within 7\u201310 business days. Please photograph the damage and the intact item. A replacement will be dispatched with packing slip pickup instruction. If the damaged item is unusable, we'll arrange an immediate refund of \u20b9900. We'll confirm the replacement pickup time within 24 hours."
+    },
+    {
+      "question_no": 3,
+      "query": "I want to cancel my order but it shows already shipped",
+      "response": "Not ideal at all \u2014 let's get this moving. We've looked into your concern and are working on a resolution. Could you provide a bit more detail \u2014 such as the order ID, the specific issue, and what outcome you'd like? This will allow us to give you a targeted and accurate resolution rather than a general response. We'll keep you updated at every step."
+    }
+  ],
+  "education": [
+    {
+      "question_no": 1,
+      "query": "I cannot access my ERP portal to check my grades",
+      "response": "Grades visibility depends on the following factors:\n- The ERP system enables course grade updates.\n- If the student has completed all examinations and submitted grades.\n- The academic department responsible for grading."
+    },
+    {
+      "question_no": 2,
+      "query": "My semester fee payment is not reflecting in the system",
+      "response": "Semester fee payments are processed through the ERP ledger after successful verification of the payment amount and the university finance system."
+    },
+    {
+      "question_no": 3,
+      "query": "I need a bonafide certificate but the admin office is not responding",
+      "response": "Bonafide certificate requests are processed through the academic administration system and require official verification from the issuing institution."
+    }
+  ],
+  "telecom": [
+    {
+      "question_no": 1,
+      "query": "My internet keeps dropping every few hours",
+      "response": "We recognize the importance of reliable internet connectivity for your daily needs. Please follow these steps to help address the intermittent loss of internet connection:\n\n1. Visit {{WEBSITE_URL}} and log in to your account.\n2. Go to the {{INTERNET_SECTION}} section.\n3. Select the option to {{REVIEW_POSSIBLE_SOLUTIONS}}.\n4. Review the listed potential solutions provided, such as network optimization, signal amplification, or a hardware upgrade.\n5. Choose the most suitable solution or additional steps to implement, if applicable.\n6. Follow the instructions outlined to complete the chosen solution or steps.\n\nBy adhering to these steps, you should be able to identify and implement the necessary measures to enhance your network connectivity. Should you face any difficulties, please do not hesitate to reach out for further assistance."
+    },
+    {
+      "question_no": 2,
+      "query": "I was charged twice for my monthly plan",
+      "response": "We recognize the inconvenience caused by an overcharge on your account and appreciate your prompt engagement to resolve this issue.\n\nTo proceed with the dispute, kindly follow these steps:\n\n1. Log in to your account on {{WEBSITE_URL}}.\n2. Navigate to the {{PLAN_SECTION}} section.\n3. Select the bill you wish to dispute.\n4. Click on the {{DISPUTE_INVOICE_OPTION}} to dispute the charge.\n5. Fill in the required details and submit your dispute.\n\nOur team will review your submission and get back to you within {{DAYS_NUMBER}} business days."
+    },
+    {
+      "question_no": 3,
+      "query": "I want to upgrade my current plan to a higher data pack",
+      "response": "To change your existing plan to a higher data allowance, please follow these steps:\n\n1. Log in to your account on {{WEBSITE_URL}}.\n2. Navigate to the {{PLAN_SECTION}} section.\n3. Select the {{CHANGE_PLAN_OPTION}} option.\n4. Choose the higher data allowance plan that you wish to subscribe to.\n5. Confirm your selection and follow any prompts to complete the process.\n\nIf you encounter any issues, please contact our customer support for further assistance."
+    }
+  ]
+}

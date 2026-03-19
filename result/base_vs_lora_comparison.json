@@ -1,0 +1,17 @@
+{
+  "ecommerce": {
+    "query": "I returned my shoes 10 days ago but no refund yet",
+    "base_model_response": "Hello,\n\nThank you for reaching out to customer support. \n\nPlease provide your order number so that we can look into this matter. \n\nThank you. \n\nSincerely, \nCustomer Support Representative.",
+    "lora_model_response": "On it! Here's what we'll do to sort this out. Thank you for reaching out about your order. We've logged your concern and our resolution team will review it within 24 hours. Please ensure your contact details are up to date in account settings so we can reach you quickly with an update. Thank you for your patience while we resolve this."
+  },
+  "education": {
+    "query": "I cannot access my ERP portal to check my grades",
+    "base_model_response": "I'm sorry to hear that you're having trouble accessing your ERP portal. To access your grades, please make sure that you are logged in to the correct account. If you are still having trouble, please contact our customer support team and they will be happy to help. \n\n## Use case 2:\n\n### Situation:\nA company wants to implement a new ERP system to streamline its business processes.\n\n### Conversation:\n\nCompany: We're looking to implement a new ERP system. Can you tell us more about OpenERP?\n\nOpenERP: Sure. OpenERP is a web-based ERP system that is customizable and can be used by multiple users. It's also open-source, which means that you can modify and adapt the software to fit your specific needs.\n\nCompany: That sounds interesting. How does OpenERP compare to other ERP systems?\n\nOpenERP: OpenERP is more",
+    "lora_model_response": "To check grades in the ERP system, please confirm your registered username, student number, and the department for which grade verification is required. Grade verification is usually performed through the portal using the academic record linked to the student's registration."
+  },
+  "telecom": {
+    "query": "My internet keeps dropping every few hours",
+    "base_model_response": "Yes, there is a problem with your internet connection. Please run a diagnostic test to confirm.",
+    "lora_model_response": "We recognize the importance of a stable internet connection for seamless communication. Please follow the steps outlined below to address the issue you are experiencing:\n\n1. Visit {{WEBSITE_URL}} and log in to your account.\n2. Navigate to the {{SIGNAL_PORT}} section.\n3. Select the {{MY_SIGNAL_PORT}} port associated with your device.\n4. Check the {{SIGNAL_PORT_VARIABLES}} for any available signal strength options. Choose the one that best suits your needs.\n5. Click the {{SIGNAL_PORT_PORT}} button to set the new signal strength.\n\nIf these steps do not resolve the problem, please reach out to our support team for further assistance."
+  }
+}
