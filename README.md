@@ -1,11 +1,11 @@
-# NexusAI — ML Pipeline 🤖
+# NexusAI - ML Pipeline
 
 > Scalable AI-Based Customer Support System powered by LoRA fine-tuned Phi-2, domain detection, and vector stores.
 > **Architecture & AI Pipeline designed and built by [@BrozG](https://github.com/BrozG)**
 
 ---
 
-## 👥 Team Contributions
+## Team Contributions
 
 | Contributor | Work Done |
 |---|---|
@@ -15,7 +15,7 @@
 
 ---
 
-## 🏆 Results at a Glance
+## Results at a Glance
 
 | Metric | Result |
 |---|---|
@@ -27,37 +27,331 @@
 
 ---
 
-## 🧠 System Architecture
+## System Architecture
 
 ```
 User Query (Natural Language)
-        ↓
-┌─────────────────────────┐
-│   Sentiment Detection   │  ← Classifies: Angry / Neutral / Happy
-│   Confidence: 91.1%     │
-└─────────────────────────┘
-        ↓
-┌─────────────────────────┐
-│   Domain Classifier     │  ← Detects: E-commerce / Education / Telecom
-│   Accuracy: 100%        │
-└─────────────────────────┘
-        ↓
-┌─────────────────────────┐
-│   Vector Store Lookup   │  ← Retrieves relevant company policies/data
-│   (RAG Pipeline)        │
-└─────────────────────────┘
-        ↓
-┌─────────────────────────┐
-│   Phi-2 + LoRA Adapter  │  ← Domain-specific fine-tuned response
-│   (Frozen base model)   │
-└─────────────────────────┘
-        ↓
+        |
+        v
++-------------------------+
+|   Sentiment Detection   |  <- Classifies: Angry / Neutral / Happy
+|   Confidence: 91.1%     |
++-------------------------+
+        |
+        v
++-------------------------+
+|   Domain Classifier     |  <- Detects: E-commerce / Education / Telecom
+|   Accuracy: 100%        |
++-------------------------+
+        |
+        v
++-------------------------+
+|   Vector Store Lookup   |  <- Retrieves relevant company policies/data
+|   (RAG Pipeline)        |
++-------------------------+
+        |
+        v
++-------------------------+
+|   Phi-2 + LoRA Adapter  |  <- Domain-specific fine-tuned response
+|   (Frozen base model)   |
++-------------------------+
+        |
+        v
    Final Response to User
 ```
 
 ---
 
-## 📊 Training Results
+## Repository Structure
+
+```
+nexusai-ml/
+├── adapters/
+│   ├── ecommerce_adapter/     # LoRA weights for E-commerce domain
+│   ├── education_adapter/     # LoRA weights for Education domain
+│   └── telecom_adapter/       # LoRA weights for Telecom domain
+├── assets/                    # Training analysis images
+├── training_data/             # Training samples (JSON format)
+├── result/                    # Inference results and comparisons
+│
+├── # Core Pipeline Files
+├── universal_fetcher.py       # Web scraping with change detection
+├── pdf_handler.py             # Document text extraction
+├── enhanced_pdf_handler.py    # PDF handler with original file preservation
+├── vector_builder.py          # FAISS vector store builder
+├── simple_rag.py              # Simplified RAG (folder-based routing)
+├── rag_pipeline.py            # Full RAG with domain classifier
+│
+├── # Generated at Runtime (gitignored)
+├── raw_data/                  # Extracted text from URLs/PDFs
+├── vector_stores/             # FAISS indexes and metadata
+├── policies/                  # Original uploaded PDFs
+├── url_tracker.json           # URL change tracking database
+│
+├── domain_classifier.pkl      # Trained domain classifier model
+├── training.ipynb             # Full training notebook
+├── requirements.txt           # Python dependencies
+└── README.md
+```
+
+---
+
+## Installation
+
+```bash
+# Clone the repo
+git clone https://github.com/BrozG/nexusai-ml
+cd nexusai-ml
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+---
+
+## Data Pipeline Usage
+
+### 1. Universal Fetcher (Web Scraping)
+
+Fetches text from URLs with SHA256 change detection and automatic scheduling.
+
+```bash
+# Show help
+python universal_fetcher.py --help
+
+# Fetch a single URL
+python universal_fetcher.py --url "https://example.com/page" --domain education --company mit
+
+# Fetch multiple URLs from a file
+python universal_fetcher.py --url-file urls.txt --domain ecommerce --company amazon
+
+# Check all tracked URLs for changes
+python universal_fetcher.py --check-updates
+
+# Start scheduled updates (runs nightly at 2 AM)
+python universal_fetcher.py --schedule
+
+# Clean up old data (older than 30 days)
+python universal_fetcher.py --cleanup --days 30
+```
+
+**URL File Format (urls.txt):**
+```
+https://example.com/help
+https://example.com/faq
+https://example.com/policies
+```
+
+**Output Structure:**
+```
+raw_data/
+└── education/
+    └── mit/
+        ├── url_example_com_help.txt
+        ├── url_example_com_faq.txt
+        └── url_example_com_policies.txt
+```
+
+---
+
+### 2. PDF Handler (Document Processing)
+
+Extracts text from PDF, DOCX, and TXT files.
+
+```bash
+# Show help
+python pdf_handler.py --help
+
+# Process a single file
+python pdf_handler.py --file document.pdf --domain ecommerce --company amazon
+
+# Process all files in a directory
+python pdf_handler.py --dir ./documents --domain education --company mit
+```
+
+**Output Structure:**
+```
+raw_data/
+└── ecommerce/
+    └── amazon/
+        ├── pdf_policy.txt
+        ├── pdf_terms.txt
+        └── pdf_faq.txt
+```
+
+---
+
+### 3. Enhanced PDF Handler (With Original Preservation)
+
+Saves both original PDFs and extracted text (for WebUI integration).
+
+```python
+from enhanced_pdf_handler import handle_pdf_with_original
+
+# Process and save original
+result = handle_pdf_with_original(
+    file=pdf_bytes,
+    domain="ecommerce",
+    company="amazon",
+    filename="refund_policy.pdf"
+)
+
+# Result:
+# {
+#     "success": True,
+#     "original_path": "policies/ecommerce/amazon/refund_policy.pdf",
+#     "extracted_path": "raw_data/ecommerce/amazon/pdf_refund_policy.txt",
+#     "characters_extracted": 15234
+# }
+```
+
+**Output Structure:**
+```
+policies/                      # Original files (untouched)
+└── ecommerce/
+    └── amazon/
+        └── refund_policy.pdf
+
+raw_data/                      # Extracted text
+└── ecommerce/
+    └── amazon/
+        └── pdf_refund_policy.txt
+```
+
+---
+
+### 4. Vector Builder (FAISS Index)
+
+Builds searchable vector stores from extracted text.
+
+```bash
+# Show help
+python vector_builder.py --help
+
+# Build vector store for specific domain/company
+python vector_builder.py --build --domain education --company mit
+
+# Build all vector stores
+python vector_builder.py --build-all
+
+# Watch mode (auto-rebuild on file changes)
+python vector_builder.py --watch
+
+# Rebuild specific vector store
+python vector_builder.py --rebuild --domain ecommerce --company amazon
+
+# Get vector store statistics
+python vector_builder.py --stats
+```
+
+**Output Structure:**
+```
+vector_stores/
+└── education/
+    └── mit/
+        ├── vector.index       # FAISS index file
+        └── metadata.json      # Chunk metadata and sources
+```
+
+---
+
+### 5. Simple RAG (Search & Generation)
+
+Simplified RAG without domain classifier - you specify domain/company directly.
+
+```bash
+# Show help
+python simple_rag.py --help
+
+# Search only (no generation)
+python simple_rag.py --search "refund policy" --domain ecommerce --company amazon
+
+# Search with more results
+python simple_rag.py --search "grades" --domain education --company mit --top-k 5
+
+# Full RAG (search + generate with Phi-2 + LoRA)
+python simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
+
+# Interactive mode
+python simple_rag.py --interactive --domain telecom --company airtel
+```
+
+**Search Output Example:**
+```
+Query: "refund policy"
+Domain: ecommerce/amazon
+
+Results:
+1. [Relevance: 0.89] Source: pdf_refund_policy.txt
+   "Returns are accepted within 30 days of purchase..."
+
+2. [Relevance: 0.76] Source: url_help_center.txt
+   "To request a refund, go to Your Orders..."
+```
+
+---
+
+### 6. RAG Pipeline (Full System with Domain Classifier)
+
+Complete RAG with automatic domain detection.
+
+```bash
+# Show help
+python rag_pipeline.py --help
+
+# Auto-detect domain and search
+python rag_pipeline.py --query "I need help with my order"
+
+# Generate response with sentiment detection
+python rag_pipeline.py --query "I'm angry about my refund delay" --generate
+
+# Interactive mode
+python rag_pipeline.py --interactive
+```
+
+---
+
+## Complete Workflow Example
+
+```bash
+# Step 1: Fetch data from web
+python universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
+
+# Step 2: Process PDF documents
+python pdf_handler.py --file handbook.pdf --domain education --company mit
+
+# Step 3: Build vector store
+python vector_builder.py --build --domain education --company mit
+
+# Step 4: Search the knowledge base
+python simple_rag.py --search "admission requirements" --domain education --company mit
+
+# Optional: Start watch mode for auto-updates
+python vector_builder.py --watch
+```
+
+---
+
+## Three-Tier Storage Architecture
+
+```
+policies/           ->    raw_data/           ->    vector_stores/
+(Original Files)          (Extracted Text)          (FAISS Index)
+     |                         |                         |
+     v                         v                         v
+  Untouched              Chunked text              Embeddings
+  PDF/DOCX               for processing            for search
+```
+
+| Tier | Purpose | Contents |
+|------|---------|----------|
+| `policies/` | Original file archive | Untouched uploaded PDFs |
+| `raw_data/` | Text extraction | Extracted text from URLs/PDFs |
+| `vector_stores/` | Search index | FAISS vectors + metadata |
+
+---
+
+## Training Results
 
 ### LoRA Adapter Training Analysis
 
@@ -71,7 +365,7 @@ User Query (Natural Language)
 
 ---
 
-### Base Phi-2 vs LoRA Fine-tuned — Quality Comparison
+### Base Phi-2 vs LoRA Fine-tuned - Quality Comparison
 
 ![Base vs LoRA Comparison](assets/base_vs_lora_comparison_graph.png)
 
@@ -80,8 +374,6 @@ User Query (Natural Language)
 | E-commerce | 2.4 / 5 | 4.6 / 5 | **+92%** |
 | Education | 1.8 / 5 | 4.2 / 5 | **+133%** |
 | Telecom | 1.4 / 5 | 5.0 / 5 | **+257%** |
-
-> Scores evaluated across: Domain Tone, Response Structure, Stays On Topic, Helpfulness, Appropriate Length
 
 ---
 
@@ -94,149 +386,41 @@ User Query (Natural Language)
 | E-commerce | 1.00 | 1.00 | 1.00 |
 | Education | 1.00 | 1.00 | 1.00 |
 | Telecom | 1.00 | 1.00 | 1.00 |
-| **Overall** | **1.00** | **1.00** | **1.00** |
-
-- ✅ Zero misclassifications on E-commerce and Education
-- ✅ Only 1 misclassification out of 700 test samples (Telecom)
-- ✅ Trained on 3,500 total samples across 3 domains
 
 ---
 
-### Sentiment & Domain Detection Analysis
-
-![Sentiment Domain Analysis](assets/sentiment_domain_analysis.png)
-
-| Metric | Confidence |
-|---|---|
-| Overall Sentiment Detection | **91.1%** |
-| Overall Domain Detection | **74.4%** |
-| Angry Query Detection | **90.2%** |
-| Neutral Query Detection | **84.4%** |
-| Happy Query Detection | **97.5%** |
-
----
-
-## 💬 Real Response Comparison
-
-### E-commerce: "I returned my shoes 10 days ago but no refund yet"
-
-**❌ Base Phi-2:**
-```
-Thank you for reaching out to customer support.
-Please provide your order number so that we can look into this matter.
-```
-
-**✅ LoRA Fine-tuned:**
-```
-On it! Here's what we'll do to sort this out. Refund delays for
-returned items rarely happen for valid returns. Please share the
-return date, the reason why you returned it, and the exact amount
-you're waiting for. We'll check if the refund was processed correctly
-and if the hold is valid. If it's valid but unprocessed, we'll push it
-immediately and you'll receive a confirmation within minutes.
-```
-
----
-
-### Education: "I cannot access my ERP portal to check my grades"
-
-**❌ Base Phi-2:**
-```
-I'm sorry to hear that you're having trouble accessing your ERP portal.
-To access your grades, please make sure that you are logged in to the
-correct account... [continues with irrelevant ERP system info]
-```
-
-**✅ LoRA Fine-tuned:**
-```
-To check grades in the ERP system, please confirm your registered
-username, student number, and the department for which grade
-verification is required.
-```
-
----
-
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |---|---|
 | Base LLM | Microsoft Phi-2 |
 | Fine-tuning Method | LoRA (Low-Rank Adaptation) |
-| Domain Classifier | ML-based Auto Domain Detection |
-| Sentiment Analysis | ML Classifier (Angry / Neutral / Happy) |
-| Vector Store | FAISS / ChromaDB |
-| RAG Pipeline | LangChain |
+| Vector Store | FAISS (Facebook AI Similarity Search) |
+| Embeddings | Sentence Transformers (all-MiniLM-L6-v2) |
+| Web Scraping | BeautifulSoup4, Requests |
+| Document Processing | PyPDF2, python-docx |
+| Scheduling | APScheduler |
+| File Monitoring | Watchdog |
 | Training | Python, PyTorch, HuggingFace |
 
 ---
 
-## 📁 Repository Structure
+## Related
 
-```
-nexusai-ml/
-├── adapters/
-│   ├── ecommerce_adapter/     # LoRA weights for E-commerce domain
-│   ├── education_adapter/     # LoRA weights for Education domain
-│   └── telecom_adapter/       # LoRA weights for Telecom domain
-├── assets/
-│   ├── lora_training_analysis_clean.png
-│   ├── base_vs_lora_comparison_graph.png
-│   ├── domain_classifier_analysis.png
-│   └── sentiment_domain_analysis.png
-├── training_data/
-│   ├── ecommerce.json         # 1,000 training samples
-│   ├── education.json         # 1,000 training samples
-│   └── telecom.json           # 1,500 training samples
-├── vector_stores/
-│   ├── ecommerce/             # E-commerce policy embeddings
-│   ├── education/             # University data embeddings
-│   └── telecom/               # Telecom data embeddings
-├── result/                    # Inference results and comparisons
-├── domain_classifier.pkl      # Trained domain classifier model
-├── training.ipynb             # Full training notebook
-└── README.md
-```
-
----
-
-## 🚀 Getting Started
-
-### 1. Clone the repo
-```bash
-git clone https://github.com/BrozG/nexusai-ml
-cd nexusai-ml
-```
-
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Run inference
-```bash
-jupyter notebook training.ipynb
-```
-
-> ⚠️ **Note:** API/backend integration is currently in development.
-
----
-
-## 🔗 Related
-
-- [NexusAI Web UI](https://github.com/BrozG/nexusai) — Next.js frontend built by [@kuhitjeetaray](https://github.com/kuhitjeetaray)
+- [NexusAI Web UI](https://github.com/BrozG/nexusai) - Next.js frontend built by [@kuhitjeetaray](https://github.com/kuhitjeetaray)
 - [Live Demo](https://nexusai-beryl.vercel.app)
 
 ---
 
-## 👤 Author
+## Author
 
-**BrozG** — AI Architecture, LoRA Pipeline, Domain Classifier, Vector Store, Training
+**BrozG** - AI Architecture, LoRA Pipeline, Domain Classifier, Vector Store, Training
 
 [![GitHub](https://img.shields.io/badge/GitHub-BrozG-blue)](https://github.com/BrozG)
 
 ---
 
-## 📄 License
+## License
 
 MIT
 

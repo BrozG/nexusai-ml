@@ -5,6 +5,10 @@ __pycache__/
 *.pyd
 *.pyc
 *.pdb
+.Python
+build/
+dist/
+*.egg-info/
 
 # Environments
 .env
@@ -22,15 +26,20 @@ env/
 *.bin
 *.pt
 *.safetensors
-vector_stores/ecommerce-vector/embedding_model.pkl
+
+# Keep domain_classifier.pkl (it's small and needed)
+# *.pkl
 
 # OS files
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# VS Code
+# VS Code / IDE
 .vscode/
+.idea/
+*.swp
+*.swo
 
 # Logs
 *.log
@@ -39,3 +48,15 @@ logs/
 # Temp files
 *.tmp
 *.temp
+
+# Data directories (generated at runtime)
+raw_data/
+vector_stores/
+policies/
+test_files/
+
+# URL tracker (generated at runtime)
+url_tracker.json
+
+# Embedding model cache
+embedding_model/
