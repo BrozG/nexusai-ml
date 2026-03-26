@@ -76,11 +76,9 @@ nexusai-ml/
 │
 ├── # Core Pipeline Files
 ├── universal_fetcher.py       # Web scraping with change detection
-├── pdf_handler.py             # Document text extraction
-├── enhanced_pdf_handler.py    # PDF handler with original file preservation
+├── pdf_handler.py             # Document processing (extract + save original)
 ├── vector_builder.py          # FAISS vector store builder
-├── simple_rag.py              # Simplified RAG (folder-based routing)
-├── rag_pipeline.py            # Full RAG with domain classifier
+├── simple_rag.py              # RAG search + generation
 │
 ├── # Generated at Runtime (gitignored)
 ├── raw_data/                  # Extracted text from URLs/PDFs
@@ -156,71 +154,48 @@ raw_data/
 
 ### 2. PDF Handler (Document Processing)
 
-Extracts text from PDF, DOCX, and TXT files.
+Extracts text from PDF, DOCX, and TXT files. Optionally saves original files.
 
 ```bash
 # Show help
 python pdf_handler.py --help
 
-# Process a single file
+# Extract text only (saves to raw_data/)
 python pdf_handler.py --file document.pdf --domain ecommerce --company amazon
 
-# Process all files in a directory
-python pdf_handler.py --dir ./documents --domain education --company mit
+# Save original + extract text (saves to policies/ AND raw_data/)
+python pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
+
+# List saved files
+python pdf_handler.py --list --domain ecommerce --company amazon
 ```
 
-**Output Structure:**
-```
-raw_data/
-└── ecommerce/
-    └── amazon/
-        ├── pdf_policy.txt
-        ├── pdf_terms.txt
-        └── pdf_faq.txt
-```
-
----
-
-### 3. Enhanced PDF Handler (With Original Preservation)
-
-Saves both original PDFs and extracted text (for WebUI integration).
-
+**Python API (for WebUI):**
 ```python
-from enhanced_pdf_handler import handle_pdf_with_original
+from pdf_handler import handle_pdf, handle_pdf_with_original
 
-# Process and save original
-result = handle_pdf_with_original(
-    file=pdf_bytes,
-    domain="ecommerce",
-    company="amazon",
-    filename="refund_policy.pdf"
-)
+# Extract text only
+result = handle_pdf(file_bytes, "ecommerce", "amazon", "policy.pdf")
+# -> raw_data/ecommerce/amazon/pdf_policy.txt
 
-# Result:
-# {
-#     "success": True,
-#     "original_path": "policies/ecommerce/amazon/refund_policy.pdf",
-#     "extracted_path": "raw_data/ecommerce/amazon/pdf_refund_policy.txt",
-#     "characters_extracted": 15234
-# }
+# Save original + extract text
+result = handle_pdf_with_original(file_bytes, "ecommerce", "amazon", "policy.pdf")
+# -> policies/ecommerce/amazon/policy.pdf
+# -> raw_data/ecommerce/amazon/pdf_policy.txt
 ```
 
 **Output Structure:**
 ```
-policies/                      # Original files (untouched)
-└── ecommerce/
-    └── amazon/
-        └── refund_policy.pdf
+policies/                      # Original files (--save-original)
+└── ecommerce/amazon/policy.pdf
 
 raw_data/                      # Extracted text
-└── ecommerce/
-    └── amazon/
-        └── pdf_refund_policy.txt
+└── ecommerce/amazon/pdf_policy.txt
 ```
 
 ---
 
-### 4. Vector Builder (FAISS Index)
+### 3. Vector Builder (FAISS Index)
 
 Builds searchable vector stores from extracted text.
 
@@ -255,7 +230,7 @@ vector_stores/
 
 ---
 
-### 5. Simple RAG (Search & Generation)
+### 4. Simple RAG (Search & Generation)
 
 Simplified RAG without domain classifier - you specify domain/company directly.
 
@@ -287,26 +262,6 @@ Results:
 
 2. [Relevance: 0.76] Source: url_help_center.txt
    "To request a refund, go to Your Orders..."
-```
-
----
-
-### 6. RAG Pipeline (Full System with Domain Classifier)
-
-Complete RAG with automatic domain detection.
-
-```bash
-# Show help
-python rag_pipeline.py --help
-
-# Auto-detect domain and search
-python rag_pipeline.py --query "I need help with my order"
-
-# Generate response with sentiment detection
-python rag_pipeline.py --query "I'm angry about my refund delay" --generate
-
-# Interactive mode
-python rag_pipeline.py --interactive
 ```
 
 ---

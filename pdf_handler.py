@@ -1,6 +1,7 @@
 """
 PDF/DOCX/TXT Handler for Document Processing
-Extracts clean text from various document formats and saves to raw_data.
+- Extracts text from documents and saves to raw_data/
+- Optionally saves original files to policies/
 """
 
 import logging
@@ -8,6 +9,12 @@ import re
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Union, BinaryIO
+
+# Set UTF-8 for Windows
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Configure logging
 logging.basicConfig(
@@ -38,40 +45,30 @@ class DocumentHandler:
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)
         self.raw_data_dir = self.base_dir / "raw_data"
+        self.policies_dir = self.base_dir / "policies"
 
-    def _ensure_directory(self, domain: str, company: str) -> Path:
+    def _ensure_directory(self, base_path: Path, domain: str, company: str) -> Path:
         """Create necessary directory structure."""
-        output_path = self.raw_data_dir / domain / company
+        output_path = base_path / domain / company
         output_path.mkdir(parents=True, exist_ok=True)
         return output_path
 
     def _clean_filename(self, filename: str) -> str:
         """Extract clean filename without extension."""
-        # Remove extension
         name = Path(filename).stem
-
-        # Clean special characters
         name = re.sub(r'[^\w\-_]', '_', name)
         name = re.sub(r'_+', '_', name)
-        name = name[:100]  # Limit length
-
+        name = name[:100]
         return name if name else 'document'
 
     def _clean_text(self, text: str) -> str:
         """Clean and normalize extracted text."""
         if not text:
             return ""
-
-        # Remove excessive whitespace
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         cleaned = '\n'.join(lines)
-
-        # Remove excessive newlines
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
-
-        # Remove control characters except newlines and tabs
         cleaned = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]', '', cleaned)
-
         return cleaned.strip()
 
     def _extract_pdf(self, file_content: bytes) -> Optional[str]:
@@ -97,7 +94,6 @@ class DocumentHandler:
 
             full_text = '\n'.join(text_parts)
             logger.info(f"Extracted {len(full_text)} characters from {len(reader.pages)} pages")
-
             return full_text
 
         except Exception as e:
@@ -116,13 +112,10 @@ class DocumentHandler:
             doc = Document(docx_file)
 
             text_parts = []
-
-            # Extract paragraphs
             for para in doc.paragraphs:
                 if para.text.strip():
                     text_parts.append(para.text)
 
-            # Extract tables
             for table in doc.tables:
                 for row in table.rows:
                     row_text = ' | '.join(cell.text.strip() for cell in row.cells)
@@ -131,7 +124,6 @@ class DocumentHandler:
 
             full_text = '\n'.join(text_parts)
             logger.info(f"Extracted {len(full_text)} characters from DOCX")
-
             return full_text
 
         except Exception as e:
@@ -141,49 +133,28 @@ class DocumentHandler:
     def _extract_txt(self, file_content: bytes) -> Optional[str]:
         """Extract text from TXT file."""
         try:
-            # Try UTF-8 first, fallback to latin-1
             try:
                 text = file_content.decode('utf-8')
             except UnicodeDecodeError:
                 text = file_content.decode('latin-1', errors='ignore')
-
             logger.info(f"Extracted {len(text)} characters from TXT")
             return text
-
         except Exception as e:
             logger.error(f"TXT extraction failed: {e}")
             return None
 
-    def process_file(
-        self,
-        file_content: bytes,
-        filename: str,
-        domain: str,
-        company: str
-    ) -> Dict[str, Union[bool, str]]:
-        """
-        Process a document file and save extracted text.
-
-        Args:
-            file_content: File content as bytes
-            filename: Original filename with extension
-            domain: Domain category (e.g., 'ecommerce', 'education', 'telecom')
-            company: Company name
-
-        Returns:
-            Dict with status, message, and output_path
-        """
+    def extract_text(self, file_content: bytes, filename: str, domain: str, company: str) -> Dict:
+        """Extract text from document and save to raw_data/"""
         try:
-            # Validate file extension
             file_ext = Path(filename).suffix.lower()
             if file_ext not in self.SUPPORTED_EXTENSIONS:
                 return {
                     "success": False,
-                    "message": f"Unsupported file type: {file_ext}. Supported: {', '.join(self.SUPPORTED_EXTENSIONS)}",
+                    "message": f"Unsupported: {file_ext}. Use: {', '.join(self.SUPPORTED_EXTENSIONS)}",
                     "output_path": None
                 }
 
-            # Extract text based on file type
+            # Extract text
             if file_ext == '.pdf':
                 text = self._extract_pdf(file_content)
             elif file_ext == '.docx':
@@ -191,35 +162,20 @@ class DocumentHandler:
             elif file_ext == '.txt':
                 text = self._extract_txt(file_content)
             else:
-                return {
-                    "success": False,
-                    "message": f"Unknown file type: {file_ext}",
-                    "output_path": None
-                }
+                return {"success": False, "message": f"Unknown type: {file_ext}", "output_path": None}
 
             if text is None:
-                return {
-                    "success": False,
-                    "message": f"Failed to extract text from {filename}",
-                    "output_path": None
-                }
+                return {"success": False, "message": f"Failed to extract from {filename}", "output_path": None}
 
-            # Clean extracted text
             cleaned_text = self._clean_text(text)
-
             if not cleaned_text:
-                return {
-                    "success": False,
-                    "message": "No text content found in file",
-                    "output_path": None
-                }
+                return {"success": False, "message": "No text content found", "output_path": None}
 
-            # Prepare output path
-            output_dir = self._ensure_directory(domain, company)
+            # Save extracted text
+            output_dir = self._ensure_directory(self.raw_data_dir, domain, company)
             clean_name = self._clean_filename(filename)
             output_file = output_dir / f"pdf_{clean_name}.txt"
 
-            # Save to file
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(cleaned_text)
 
@@ -227,113 +183,212 @@ class DocumentHandler:
 
             return {
                 "success": True,
-                "message": f"Successfully processed {filename}",
+                "message": f"Processed {filename}",
                 "output_path": str(output_file.relative_to(self.base_dir)),
                 "characters_extracted": len(cleaned_text)
             }
 
         except Exception as e:
-            logger.error(f"Error processing file {filename}: {e}")
+            logger.error(f"Error processing {filename}: {e}")
+            return {"success": False, "message": f"Error: {str(e)}", "output_path": None}
+
+    def save_original(self, file_content: bytes, filename: str, domain: str, company: str) -> Dict:
+        """Save original file to policies/"""
+        try:
+            policies_dir = self._ensure_directory(self.policies_dir, domain, company)
+            original_path = policies_dir / filename
+
+            with open(original_path, 'wb') as f:
+                f.write(file_content)
+
+            logger.info(f"Original saved: {original_path}")
             return {
-                "success": False,
-                "message": f"Processing error: {str(e)}",
-                "output_path": None
+                "success": True,
+                "original_path": str(original_path.relative_to(self.base_dir))
             }
+        except Exception as e:
+            logger.error(f"Failed to save original: {e}")
+            return {"success": False, "original_path": None}
 
 
-# Convenience function for FastAPI integration
+# === Public API Functions ===
+
 def handle_pdf(
     file: Union[bytes, BinaryIO],
     domain: str,
     company: str,
     filename: Optional[str] = None
-) -> Dict[str, Union[bool, str]]:
+) -> Dict:
     """
-    Handle PDF/DOCX/TXT file upload and extraction.
+    Extract text from PDF/DOCX/TXT (saves to raw_data/ only).
 
     Args:
-        file: File content as bytes or file-like object
+        file: File bytes or file-like object
         domain: Domain category
         company: Company name
-        filename: Original filename (required if file is bytes)
+        filename: Original filename
 
     Returns:
-        Dict with success status, message, and output path
-
-    Example:
-        >>> result = handle_pdf(file_bytes, "ecommerce", "amazon", "catalog.pdf")
-        >>> if result["success"]:
-        ...     print(f"Saved to: {result['output_path']}")
+        Dict with success, message, output_path, characters_extracted
     """
     handler = DocumentHandler()
 
-    # Handle file-like objects (FastAPI UploadFile)
     if hasattr(file, 'read'):
         file_content = file.read()
         if hasattr(file, 'seek'):
-            file.seek(0)  # Reset file pointer
+            file.seek(0)
         if filename is None and hasattr(file, 'filename'):
             filename = file.filename
     else:
         file_content = file
 
     if filename is None:
-        return {
-            "success": False,
-            "message": "Filename must be provided",
-            "output_path": None
-        }
+        return {"success": False, "message": "Filename required", "output_path": None}
 
-    return handler.process_file(file_content, filename, domain, company)
+    return handler.extract_text(file_content, filename, domain, company)
 
 
-# CLI for standalone usage
+def handle_pdf_with_original(
+    file: Union[bytes, BinaryIO],
+    domain: str,
+    company: str,
+    filename: str,
+    base_dir: str = "."
+) -> Dict:
+    """
+    Save original file + extract text.
+
+    Saves to:
+    - policies/{domain}/{company}/{filename} (original)
+    - raw_data/{domain}/{company}/pdf_{name}.txt (extracted)
+
+    Args:
+        file: File bytes or file-like object
+        domain: Domain category
+        company: Company name
+        filename: Original filename
+        base_dir: Base directory
+
+    Returns:
+        Dict with original_path, extracted_path, characters_extracted
+    """
+    handler = DocumentHandler(base_dir)
+
+    if hasattr(file, 'read'):
+        file_content = file.read()
+        if hasattr(file, 'seek'):
+            file.seek(0)
+    else:
+        file_content = file
+
+    # Save original
+    original_result = handler.save_original(file_content, filename, domain, company)
+
+    # Extract text
+    extract_result = handler.extract_text(file_content, filename, domain, company)
+
+    return {
+        "success": extract_result["success"] and original_result["success"],
+        "message": extract_result["message"],
+        "original_path": original_result.get("original_path"),
+        "extracted_path": extract_result.get("output_path"),
+        "characters_extracted": extract_result.get("characters_extracted"),
+        "domain": domain,
+        "company": company,
+        "filename": filename
+    }
+
+
+def list_pdfs(domain: str, company: str, base_dir: str = ".") -> Dict:
+    """List all original files in policies/{domain}/{company}/"""
+    policies_dir = Path(base_dir) / "policies" / domain / company
+
+    if not policies_dir.exists():
+        return {"domain": domain, "company": company, "count": 0, "files": []}
+
+    files = []
+    for f in sorted(policies_dir.glob("*.*")):
+        if f.is_file():
+            stat = f.stat()
+            files.append({
+                "filename": f.name,
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "extension": f.suffix
+            })
+
+    return {"domain": domain, "company": company, "count": len(files), "files": files}
+
+
+def get_original_path(domain: str, company: str, filename: str, base_dir: str = ".") -> Path:
+    """Get path to original file in policies/"""
+    return Path(base_dir) / "policies" / domain / company / filename
+
+
+# === CLI ===
+
 def main():
-    """Command-line interface for document processing."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Document Handler - Extract text from PDF/DOCX/TXT files',
+        description='Document Handler - Process PDF/DOCX/TXT files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Process a PDF file
-  python pdf_handler.py --file document.pdf --domain ecommerce --company amazon
+  # Extract text only
+  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
 
-  # Process a DOCX file
-  python pdf_handler.py --file manual.docx --domain telecom --company airtel
+  # Save original + extract text
+  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon --save-original
 
-  # Process a TXT file
-  python pdf_handler.py --file readme.txt --domain education --company smit
+  # List saved files
+  python pdf_handler.py --list --domain ecommerce --company amazon
         """
     )
 
-    parser.add_argument('--file', required=True, help='Path to input file (PDF/DOCX/TXT)')
-    parser.add_argument('--domain', required=True, help='Domain category')
-    parser.add_argument('--company', required=True, help='Company name')
+    parser.add_argument('--file', help='Path to input file')
+    parser.add_argument('--domain', help='Domain category')
+    parser.add_argument('--company', help='Company name')
+    parser.add_argument('--save-original', action='store_true', help='Also save original file to policies/')
+    parser.add_argument('--list', action='store_true', help='List saved PDFs for domain/company')
 
     args = parser.parse_args()
 
-    # Read file
-    file_path = Path(args.file)
-    if not file_path.exists():
-        print(f"✗ File not found: {args.file}")
-        sys.exit(1)
-
-    with open(file_path, 'rb') as f:
-        file_content = f.read()
-
-    # Process file
-    result = handle_pdf(file_content, args.domain, args.company, file_path.name)
-
-    # Display result
-    if result["success"]:
-        print(f"\n✓ {result['message']}")
-        print(f"  Output: {result['output_path']}")
-        print(f"  Characters: {result.get('characters_extracted', 'N/A')}")
+    if args.list:
+        if not args.domain or not args.company:
+            print("Error: --list requires --domain and --company")
+            sys.exit(1)
+        result = list_pdfs(args.domain, args.company)
+        print(f"\nFiles for {args.domain}/{args.company}: {result['count']}\n")
+        for f in result['files']:
+            print(f"  {f['filename']} ({f['size_mb']} MB)")
     else:
-        print(f"\n✗ {result['message']}")
-        sys.exit(1)
+        if not args.file or not args.domain or not args.company:
+            parser.print_help()
+            sys.exit(1)
+
+        file_path = Path(args.file)
+        if not file_path.exists():
+            print(f"Error: File not found: {args.file}")
+            sys.exit(1)
+
+        with open(file_path, 'rb') as f:
+            if args.save_original:
+                result = handle_pdf_with_original(f, args.domain, args.company, file_path.name)
+                if result['success']:
+                    print(f"\nOriginal: {result['original_path']}")
+                    print(f"Extracted: {result['extracted_path']}")
+                    print(f"Characters: {result['characters_extracted']}")
+                else:
+                    print(f"Error: {result['message']}")
+                    sys.exit(1)
+            else:
+                result = handle_pdf(f, args.domain, args.company, file_path.name)
+                if result['success']:
+                    print(f"\nExtracted: {result['output_path']}")
+                    print(f"Characters: {result['characters_extracted']}")
+                else:
+                    print(f"Error: {result['message']}")
+                    sys.exit(1)
 
 
 if __name__ == "__main__":
