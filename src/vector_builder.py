@@ -12,21 +12,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-# Fix Windows console encoding for Unicode characters
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# Configure logging only if running as main script (not when imported by main.py)
+# This prevents conflicts when used as a module
+if __name__ == "__main__":
+    # Fix Windows console encoding for Unicode characters
+    if sys.platform == "win32":
+        try:
+            import io
+            if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != 'utf-8':
+                sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+            if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != 'utf-8':
+                sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        except Exception:
+            pass
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('vector_builder.log', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('vector_builder.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 logger = logging.getLogger(__name__)
 
 # Optional imports with availability flags
@@ -142,12 +150,18 @@ class VectorStoreBuilder:
 
     def __init__(
         self,
-        base_dir: str = ".",
+        base_dir: str = None,
         model_name: str = "all-MiniLM-L6-v2"
     ):
-        self.base_dir = Path(base_dir)
-        self.raw_data_dir = self.base_dir / "raw_data"
-        self.vector_stores_dir = self.base_dir / "vector_stores"
+        # Default to project root (parent of src/)
+        if base_dir is None:
+            self.base_dir = Path(__file__).parent.parent
+        else:
+            self.base_dir = Path(base_dir)
+        
+        # Data directories are now in data/
+        self.raw_data_dir = self.base_dir / "data" / "raw_data"
+        self.vector_stores_dir = self.base_dir / "data" / "vector_stores"
         self.model_name = model_name
         self.embedding_model = None
         self.chunker = TextChunker(chunk_size=450, overlap=50)

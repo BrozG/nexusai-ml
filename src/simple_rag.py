@@ -8,10 +8,14 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
-# Set UTF-8 for Windows
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+# Set UTF-8 for Windows (only when running standalone)
+if sys.platform == "win32" and __name__ == "__main__":
+    try:
+        import io
+        if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != 'utf-8':
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    except Exception:
+        pass
 
 try:
     import faiss
@@ -32,11 +36,15 @@ class SimpleRAG:
     User specifies domain/company → we use that vector store + LoRA adapter.
     """
 
-    def __init__(self, base_dir: str = "."):
+    def __init__(self, base_dir: str = None):
         if not DEPENDENCIES_AVAILABLE:
             raise ImportError("Required dependencies not installed")
 
-        self.base_dir = Path(base_dir)
+        # Default to project root (parent of src/)
+        if base_dir is None:
+            self.base_dir = Path(__file__).parent.parent
+        else:
+            self.base_dir = Path(base_dir)
 
         print("Loading embedding model...")
         self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -45,12 +53,22 @@ class SimpleRAG:
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token  # Fix padding
 
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {device}")
+        
+        # Load model - use simple device placement for PEFT compatibility
+        # device_map="auto" with offloading causes meta tensor issues with PEFT
         self.base_model = AutoModelForCausalLM.from_pretrained(
             "microsoft/phi-2",
-            torch_dtype=torch.float16,
-            device_map="auto",
-            trust_remote_code=True
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True
         )
+        
+        # Move to device
+        if device == "cuda":
+            self.base_model = self.base_model.to(device)
 
         # Caches
         self.lora_adapters = {}
@@ -65,15 +83,15 @@ class SimpleRAG:
         if key in self.vector_stores:
             return self.vector_stores[key]
 
-        # Paths based on your folder structure
-        index_path = self.base_dir / "vector_stores" / domain / company / "vector.index"
-        metadata_path = self.base_dir / "vector_stores" / domain / company / "metadata.json"
+        # Paths based on your folder structure (now in data/ directory)
+        index_path = self.base_dir / "data" / "vector_stores" / domain / company / "vector.index"
+        metadata_path = self.base_dir / "data" / "vector_stores" / domain / company / "metadata.json"
 
         if not index_path.exists():
-            available = list((self.base_dir / "vector_stores").rglob("vector.index"))
+            available = list((self.base_dir / "data" / "vector_stores").rglob("vector.index"))
             raise FileNotFoundError(
                 f"Vector store not found: {index_path}\n"
-                f"Available stores: {[str(p.parent.relative_to(self.base_dir / 'vector_stores')) for p in available]}"
+                f"Available stores: {[str(p.parent.relative_to(self.base_dir / 'data' / 'vector_stores')) for p in available]}"
             )
 
         # Load FAISS index
@@ -143,7 +161,12 @@ class SimpleRAG:
                 raise FileNotFoundError(f"Adapter not found: {zip_path}")
 
         print(f"Loading {domain} LoRA adapter...")
-        model = PeftModel.from_pretrained(self.base_model, str(adapter_path))
+        
+        # Load PEFT adapter
+        model = PeftModel.from_pretrained(
+            self.base_model, 
+            str(adapter_path)
+        )
 
         self.lora_adapters[domain] = model
         return model
@@ -205,9 +228,15 @@ Based on the context above, answer the following question:
 Question: {query}
 Answer:"""
 
+        print(f"DEBUG - Prompt length: {len(prompt)} chars")
+        print(f"DEBUG - Context chunks found: {len(context_chunks)}")
+        print(f"DEBUG - First context chunk: {context_chunks[0] if context_chunks else 'NONE'}")
+
         # Tokenize
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        
+        print(f"DEBUG - Input token count: {inputs['input_ids'].shape[1]}")
 
         # Generate
         with torch.no_grad():
@@ -219,15 +248,24 @@ Answer:"""
                 top_p=0.9,
                 pad_token_id=self.tokenizer.eos_token_id
             )
+        
+        print(f"DEBUG - Output token count: {outputs.shape[1]}")
 
         # Decode
         full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        print(f"DEBUG - Full model output length: {len(full_response)} chars")
+        print(f"DEBUG - Full output preview: {full_response[:500]}")
 
         # Extract only the answer (after "Answer:")
         if "Answer:" in full_response:
             answer = full_response.split("Answer:")[-1].strip()
+            print(f"DEBUG - Extracted answer after 'Answer:': {answer[:200]}")
         else:
             answer = full_response[len(prompt):].strip()
+            print(f"DEBUG - Extracted answer (no 'Answer:' found): {answer[:200]}")
+        
+        print(f"DEBUG - Final answer length: {len(answer)} chars")
 
         print("✓ Generated!\n")
         print(f"{'='*70}")

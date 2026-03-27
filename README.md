@@ -5,6 +5,51 @@
 
 ---
 
+## 🚀 Quick Start (FastAPI Server)
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure API keys (edit api_keys.json)
+
+# Start server
+python run.py
+
+# Test health
+curl http://localhost:8000/api/health
+```
+
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for detailed setup.
+
+---
+
+## 📁 New Project Structure
+
+```
+nexsusai-ml/
+├── src/                    # Source code
+│   ├── main.py            # FastAPI server
+│   ├── simple_rag.py      # RAG pipeline
+│   ├── pdf_handler.py     # Document processing
+│   ├── universal_fetcher.py # Web scraping
+│   └── vector_builder.py  # FAISS builder
+├── data/                   # Runtime data
+│   ├── policies/          # Original files
+│   ├── raw_data/          # Extracted text
+│   └── vector_stores/     # FAISS indexes
+├── adapters/               # LoRA adapters
+├── training/               # Training files
+├── tests/                  # Test files
+├── docs/                   # Documentation
+├── logs/                   # Server logs
+├── run.py                 # Server launcher
+├── api_keys.json          # API config
+└── requirements.txt
+```
+
+---
+
 ## Team Contributions
 
 | Contributor | Work Done |
@@ -65,30 +110,44 @@ User Query (Natural Language)
 ## Repository Structure
 
 ```
-nexusai-ml/
-├── adapters/
-│   ├── ecommerce_adapter/     # LoRA weights for E-commerce domain
-│   ├── education_adapter/     # LoRA weights for Education domain
-│   └── telecom_adapter/       # LoRA weights for Telecom domain
-├── assets/                    # Training analysis images
-├── training_data/             # Training samples (JSON format)
-├── result/                    # Inference results and comparisons
+nexsusai-ml/
+├── src/                       # Source code
+│   ├── main.py               # FastAPI server
+│   ├── simple_rag.py         # RAG search + generation
+│   ├── pdf_handler.py        # Document processing
+│   ├── universal_fetcher.py  # Web scraping
+│   └── vector_builder.py     # FAISS vector store builder
 │
-├── # Core Pipeline Files
-├── universal_fetcher.py       # Web scraping with change detection
-├── pdf_handler.py             # Document processing (extract + save original)
-├── vector_builder.py          # FAISS vector store builder
-├── simple_rag.py              # RAG search + generation
+├── data/                      # Runtime data (gitignored)
+│   ├── policies/             # Original uploaded documents
+│   ├── raw_data/             # Extracted text from URLs/PDFs
+│   └── vector_stores/        # FAISS indexes and metadata
 │
-├── # Generated at Runtime (gitignored)
-├── raw_data/                  # Extracted text from URLs/PDFs
-├── vector_stores/             # FAISS indexes and metadata
-├── policies/                  # Original uploaded PDFs
-├── url_tracker.json           # URL change tracking database
+├── adapters/                  # LoRA weights
+│   ├── ecommerce_adapter/
+│   ├── education_adapter/
+│   └── telecom_adapter/
 │
-├── domain_classifier.pkl      # Trained domain classifier model
-├── training.ipynb             # Full training notebook
-├── requirements.txt           # Python dependencies
+├── training/                  # Training resources
+│   ├── training.ipynb        # Training notebook
+│   ├── training_data/        # Training datasets (JSON)
+│   ├── training_result/      # Evaluation results
+│   └── training_assets/      # Analysis images
+│
+├── tests/                     # Test files
+│   └── test_api.py           # Automated test suite
+│
+├── docs/                      # Documentation
+│   ├── API.md
+│   ├── QUICKSTART.md
+│   ├── ARCHITECTURE.md
+│   └── ...
+│
+├── logs/                      # Server logs
+├── run.py                    # Server launcher
+├── api_keys.json             # API authentication config
+├── domain_classifier.pkl     # Domain classifier model
+├── requirements.txt          # Python dependencies
 └── README.md
 ```
 
@@ -115,22 +174,19 @@ Fetches text from URLs with SHA256 change detection and automatic scheduling.
 
 ```bash
 # Show help
-python universal_fetcher.py --help
+python src/universal_fetcher.py --help
 
 # Fetch a single URL
-python universal_fetcher.py --url "https://example.com/page" --domain education --company mit
+python src/universal_fetcher.py --url "https://example.com/page" --domain education --company mit
 
 # Fetch multiple URLs from a file
-python universal_fetcher.py --url-file urls.txt --domain ecommerce --company amazon
+python src/universal_fetcher.py --url-file urls.txt --domain ecommerce --company amazon
 
 # Check all tracked URLs for changes
-python universal_fetcher.py --check-updates
+python src/universal_fetcher.py --check-updates
 
 # Start scheduled updates (runs nightly at 2 AM)
-python universal_fetcher.py --schedule
-
-# Clean up old data (older than 30 days)
-python universal_fetcher.py --cleanup --days 30
+python src/universal_fetcher.py --schedule
 ```
 
 **URL File Format (urls.txt):**
@@ -142,7 +198,7 @@ https://example.com/policies
 
 **Output Structure:**
 ```
-raw_data/
+data/raw_data/
 └── education/
     └── mit/
         ├── url_example_com_help.txt
@@ -158,38 +214,38 @@ Extracts text from PDF, DOCX, and TXT files. Optionally saves original files.
 
 ```bash
 # Show help
-python pdf_handler.py --help
+python src/pdf_handler.py --help
 
-# Extract text only (saves to raw_data/)
-python pdf_handler.py --file document.pdf --domain ecommerce --company amazon
+# Extract text only (saves to data/raw_data/)
+python src/pdf_handler.py --file document.pdf --domain ecommerce --company amazon
 
-# Save original + extract text (saves to policies/ AND raw_data/)
-python pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
+# Save original + extract text (saves to data/policies/ AND data/raw_data/)
+python src/pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
 
 # List saved files
-python pdf_handler.py --list --domain ecommerce --company amazon
+python src/pdf_handler.py --list --domain ecommerce --company amazon
 ```
 
 **Python API (for WebUI):**
 ```python
-from pdf_handler import handle_pdf, handle_pdf_with_original
+from src.pdf_handler import handle_pdf, handle_pdf_with_original
 
 # Extract text only
 result = handle_pdf(file_bytes, "ecommerce", "amazon", "policy.pdf")
-# -> raw_data/ecommerce/amazon/pdf_policy.txt
+# -> data/raw_data/ecommerce/amazon/pdf_policy.txt
 
 # Save original + extract text
 result = handle_pdf_with_original(file_bytes, "ecommerce", "amazon", "policy.pdf")
-# -> policies/ecommerce/amazon/policy.pdf
-# -> raw_data/ecommerce/amazon/pdf_policy.txt
+# -> data/policies/ecommerce/amazon/policy.pdf
+# -> data/raw_data/ecommerce/amazon/pdf_policy.txt
 ```
 
 **Output Structure:**
 ```
-policies/                      # Original files (--save-original)
+data/policies/                 # Original files (--save-original)
 └── ecommerce/amazon/policy.pdf
 
-raw_data/                      # Extracted text
+data/raw_data/                 # Extracted text
 └── ecommerce/amazon/pdf_policy.txt
 ```
 
@@ -201,27 +257,27 @@ Builds searchable vector stores from extracted text.
 
 ```bash
 # Show help
-python vector_builder.py --help
+python src/vector_builder.py --help
 
 # Build vector store for specific domain/company
-python vector_builder.py --build --domain education --company mit
+python src/vector_builder.py --build --domain education --company mit
 
 # Build all vector stores
-python vector_builder.py --build-all
+python src/vector_builder.py --build-all
 
 # Watch mode (auto-rebuild on file changes)
-python vector_builder.py --watch
+python src/vector_builder.py --watch
 
 # Rebuild specific vector store
-python vector_builder.py --rebuild --domain ecommerce --company amazon
+python src/vector_builder.py --rebuild --domain ecommerce --company amazon
 
 # Get vector store statistics
-python vector_builder.py --stats
+python src/vector_builder.py --stats
 ```
 
 **Output Structure:**
 ```
-vector_stores/
+data/vector_stores/
 └── education/
     └── mit/
         ├── vector.index       # FAISS index file
@@ -236,19 +292,19 @@ Simplified RAG without domain classifier - you specify domain/company directly.
 
 ```bash
 # Show help
-python simple_rag.py --help
+python src/simple_rag.py --help
 
 # Search only (no generation)
-python simple_rag.py --search "refund policy" --domain ecommerce --company amazon
+python src/simple_rag.py --search "refund policy" --domain ecommerce --company amazon
 
 # Search with more results
-python simple_rag.py --search "grades" --domain education --company mit --top-k 5
+python src/simple_rag.py --search "grades" --domain education --company mit --top-k 5
 
 # Full RAG (search + generate with Phi-2 + LoRA)
-python simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
+python src/simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
 
 # Interactive mode
-python simple_rag.py --interactive --domain telecom --company airtel
+python src/simple_rag.py --interactive --domain telecom --company airtel
 ```
 
 **Search Output Example:**
@@ -270,19 +326,19 @@ Results:
 
 ```bash
 # Step 1: Fetch data from web
-python universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
+python src/universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
 
 # Step 2: Process PDF documents
-python pdf_handler.py --file handbook.pdf --domain education --company mit
+python src/pdf_handler.py --file handbook.pdf --domain education --company mit
 
 # Step 3: Build vector store
-python vector_builder.py --build --domain education --company mit
+python src/vector_builder.py --build --domain education --company mit
 
 # Step 4: Search the knowledge base
-python simple_rag.py --search "admission requirements" --domain education --company mit
+python src/simple_rag.py --search "admission requirements" --domain education --company mit
 
 # Optional: Start watch mode for auto-updates
-python vector_builder.py --watch
+python src/vector_builder.py --watch
 ```
 
 ---
@@ -290,7 +346,7 @@ python vector_builder.py --watch
 ## Three-Tier Storage Architecture
 
 ```
-policies/           ->    raw_data/           ->    vector_stores/
+data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 (Original Files)          (Extracted Text)          (FAISS Index)
      |                         |                         |
      v                         v                         v
@@ -300,9 +356,9 @@ policies/           ->    raw_data/           ->    vector_stores/
 
 | Tier | Purpose | Contents |
 |------|---------|----------|
-| `policies/` | Original file archive | Untouched uploaded PDFs |
-| `raw_data/` | Text extraction | Extracted text from URLs/PDFs |
-| `vector_stores/` | Search index | FAISS vectors + metadata |
+| `data/policies/` | Original file archive | Untouched uploaded PDFs |
+| `data/raw_data/` | Text extraction | Extracted text from URLs/PDFs |
+| `data/vector_stores/` | Search index | FAISS vectors + metadata |
 
 ---
 
@@ -310,7 +366,7 @@ policies/           ->    raw_data/           ->    vector_stores/
 
 ### LoRA Adapter Training Analysis
 
-![LoRA Training Analysis](assets/lora_training_analysis_clean.png)
+![LoRA Training Analysis](training/training_assets/lora_training_analysis_clean.png)
 
 | Domain | Samples | Start Loss | End Loss | Reduction |
 |---|---|---|---|---|
@@ -322,7 +378,7 @@ policies/           ->    raw_data/           ->    vector_stores/
 
 ### Base Phi-2 vs LoRA Fine-tuned - Quality Comparison
 
-![Base vs LoRA Comparison](assets/base_vs_lora_comparison_graph.png)
+![Base vs LoRA Comparison](training/training_assets/base_vs_lora_comparison_graph.png)
 
 | Domain | Base Phi-2 Score | LoRA Score | Improvement |
 |---|---|---|---|
@@ -334,7 +390,7 @@ policies/           ->    raw_data/           ->    vector_stores/
 
 ### Domain Classifier Analysis
 
-![Domain Classifier Analysis](assets/domain_classifier_analysis.png)
+![Domain Classifier Analysis](training/training_assets/domain_classifier_analysis.png)
 
 | Domain | Precision | Recall | F1-Score |
 |---|---|---|---|

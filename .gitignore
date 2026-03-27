@@ -45,6 +45,10 @@ desktop.ini
 *.log
 logs/
 
+# API Keys (NEVER COMMIT)
+api_keys.json
+.env
+
 # Temp files
 *.tmp
 *.temp
@@ -60,3 +64,6 @@ url_tracker.json
 
 # Embedding model cache
 embedding_model/
+
+# Model offload directory (memory management)
+model_offload/
