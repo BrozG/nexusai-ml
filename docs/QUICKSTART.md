@@ -141,6 +141,7 @@ curl -X POST http://localhost:8000/admin/upload-file \
 ```
 
 Or use the interactive docs at: **http://localhost:8000/docs**
+(Click "Authorize" and enter your API key first)
 
 ### Step 3: Make Your First Chat Request
 
@@ -154,6 +155,34 @@ curl -X POST http://localhost:8000/api/chat \
     "query": "What is your refund policy?",
     "top_k": 3
   }'
+```
+
+### Step 4: Manage Your Files
+
+List uploaded files:
+```bash
+curl -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/files
+```
+
+Delete unwanted files (auto-rebuilds vector store):
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/files/old_document.pdf
+```
+
+### Step 5: Manage Scraped URLs
+
+List scraped URLs:
+```bash
+curl -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/urls
+```
+
+Delete URL content:
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/urls/url_example_page.txt
 ```
 
 ## Testing
@@ -196,16 +225,20 @@ nexsusai-ml/
 │   └── vector_builder.py
 │
 ├── data/                  # Runtime data
-│   ├── policies/         # Original uploaded files
-│   ├── raw_data/         # Extracted text
+│   ├── original_files/   # Original uploaded files (preserved)
+│   ├── raw_data/         # Extracted text (used for vectors)
 │   └── vector_stores/    # FAISS indexes
 │
 ├── tests/                 # Test files
 │   └── test_api.py
 │
 ├── docs/                  # Documentation
+│   ├── API.md            # Endpoint reference
+│   ├── QUICKSTART.md     # This file
+│   └── fixes/            # Troubleshooting guides
+│
 ├── logs/                  # Server logs
-└── adapters/             # LoRA adapters
+└── adapters/             # LoRA adapters (.zip files)
 ```
 
 ## Common Issues
@@ -242,7 +275,27 @@ nexsusai-ml/
 
 **Expected behavior**: First request loads models into memory (10-30s)
 
-**Subsequent requests are fast** (<2s)
+**Subsequent requests are fast** (<2s with GPU, 30-120s on CPU)
+
+### 🔴 Wrong topic in response
+
+**Cause**: Irrelevant files in vector store polluting results
+
+**Solution**:
+1. List your files: `GET /api/files`
+2. Delete unwanted files: `DELETE /api/files/{filename}`
+3. Vector store rebuilds automatically
+4. See `docs/fixes/RAG_RESPONSE_FIXES.md` for details
+
+### 🔴 Empty or partial responses
+
+**Cause**: Token extraction or prompt format issues
+
+**Solution**:
+1. Use `top_k=3` or higher for complex questions
+2. Increase `max_tokens` in request (default: 200)
+3. Check server version - fixes applied in March 2026
+4. See `docs/fixes/RAG_RESPONSE_FIXES.md` for details
 
 ## Production Deployment
 

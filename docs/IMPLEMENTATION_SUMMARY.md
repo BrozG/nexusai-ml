@@ -64,11 +64,11 @@ A complete **FastAPI server** (`main.py`) that integrates all existing NexusAI c
 
 ### 2. **POST /admin/upload-file**
 - **Purpose**: Upload PDF/DOCX/TXT documents
-- **Auth**: Admin API key only
+- **Auth**: Any valid API key (uploads to own company)
 - **Features**:
   - Receives file upload
   - Calls `pdf_handler.handle_pdf_with_original()`
-  - Saves original to `policies/`
+  - Saves original to `original_files/`
   - Extracts text to `raw_data/`
   - Triggers vector store rebuild (background task)
 - **Response includes**:
@@ -78,7 +78,7 @@ A complete **FastAPI server** (`main.py`) that integrates all existing NexusAI c
 
 ### 3. **POST /admin/add-url**
 - **Purpose**: Add URL to scrape
-- **Auth**: Admin API key only
+- **Auth**: Any valid API key (saves to own company)
 - **Features**:
   - Receives URL
   - Calls `universal_fetcher.fetch_url()`
@@ -90,7 +90,61 @@ A complete **FastAPI server** (`main.py`) that integrates all existing NexusAI c
   - Domain/company
   - URL processed
 
-### 4. **GET /api/health**
+### 4. **GET /api/files**
+- **Purpose**: List uploaded files for your domain/company
+- **Auth**: User API key
+- **Features**:
+  - Lists both raw_data and original_files
+  - Shows file size, type, creation date
+  - Categorized by file type (pdf, url, etc.)
+- **Response includes**:
+  - File list with metadata
+  - Total count
+
+### 5. **DELETE /api/files/{filename}**
+- **Purpose**: Delete a specific file
+- **Auth**: User API key
+- **Features**:
+  - Deletes raw data and original file
+  - **Automatically rebuilds vector store**
+  - Prevents pollution from old data
+- **Response includes**:
+  - Success status
+  - Deleted file paths
+  - Vector rebuild status
+
+### 6. **DELETE /api/files**
+- **Purpose**: Delete ALL files for your domain/company
+- **Auth**: User API key
+- **Features**:
+  - Removes all files and vector store
+  - Clean slate for re-uploading
+- **⚠️ Use with caution!**
+
+### 7. **GET /api/urls**
+- **Purpose**: List scraped URLs for your domain/company
+- **Auth**: User API key
+- **Features**:
+  - Lists all URL files (prefix: url_)
+  - Extracts original URL from file content
+  - Shows file size, creation date
+
+### 8. **DELETE /api/urls/{filename}**
+- **Purpose**: Delete a specific URL file
+- **Auth**: User API key
+- **Features**:
+  - Deletes URL content from raw_data
+  - **Automatically rebuilds vector store**
+  - Keeps PDF/DOCX files intact
+
+### 9. **DELETE /api/urls**
+- **Purpose**: Delete ALL URL files
+- **Auth**: User API key
+- **Features**:
+  - Removes only URL files (keeps PDFs safe)
+  - Rebuilds vector store automatically
+
+### 10. **GET /api/health**
 - **Purpose**: Health check
 - **Auth**: None (public)
 - **Response includes**:
@@ -100,7 +154,7 @@ A complete **FastAPI server** (`main.py`) that integrates all existing NexusAI c
   - Sentiment model status
   - Vector builder status
 
-### 5. **GET /admin/logs**
+### 11. **GET /admin/logs**
 - **Purpose**: View server logs
 - **Auth**: Admin API key only
 - **Features**:
@@ -308,6 +362,20 @@ Log to logs/api.log
 - **Previously**: Basic console logs
 - **Now**: Structured logging with timestamps, domains, metrics
 - **Access**: Via `/admin/logs` endpoint
+
+### 6. File & URL Management
+- **Previously**: No way to delete or manage uploaded content
+- **Now**: Full CRUD for files and URLs
+- **Features**:
+  - List files/URLs per domain/company
+  - Delete individual or all files/URLs
+  - **Auto vector store rebuild** on deletion
+- **Benefit**: Prevents data pollution from old/irrelevant content
+
+### 7. Swagger UI Authorization
+- **Previously**: No way to authenticate in Swagger UI
+- **Now**: "Authorize" button for API key entry
+- **Result**: Test all endpoints directly from browser
 
 ---
 

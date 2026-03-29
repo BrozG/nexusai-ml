@@ -177,8 +177,8 @@ class SimpleRAG:
         domain: str,
         company: str,
         top_k: int = 3,
-        max_new_tokens: int = 150,
-        temperature: float = 0.7
+        max_new_tokens: int = 200,
+        temperature: float = 0.3
     ) -> Dict:
         """
         Complete RAG: Search → Generate
@@ -204,15 +204,20 @@ class SimpleRAG:
         print("Step 1: Searching for relevant context...")
         context_chunks = self.search(query, domain, company, top_k)
 
-        # Build context string
-        context = "\n\n".join([
-            f"[Source: {chunk['source']}]\n{chunk['text']}"
-            for chunk in context_chunks
-        ])
+        # Build context string from all retrieved chunks
+        # Combine multiple chunks for comprehensive context
+        if not context_chunks:
+            context = "No relevant information found."
+        else:
+            # Use all top_k chunks, ordered by relevance
+            context = "\n\n".join([
+                f"[Source: {chunk['source']}]\n{chunk['text']}"
+                for chunk in context_chunks
+            ])
 
         print(f"✓ Found {len(context_chunks)} relevant chunks\n")
 
-        # Step 2: Load LoRA adapter
+        # Step 2: Load LoRA adapter for domain-specific knowledge
         print("Step 2: Loading LoRA adapter...")
         model = self._load_lora_adapter(domain)
         print("✓ Adapter loaded\n")
@@ -220,50 +225,72 @@ class SimpleRAG:
         # Step 3: Generate response
         print("Step 3: Generating response...")
 
-        # Build prompt
-        prompt = f"""Context information:
-{context}
+        # Build prompt matching the training format (instruction-input-output)
+        # The adapters were trained with this specific format
+        prompt = f"""Instruction: Answer the following question using the context provided.
 
-Based on the context above, answer the following question:
-Question: {query}
-Answer:"""
+Context: {context}
+
+Input: {query}
+
+Output:"""
 
         print(f"DEBUG - Prompt length: {len(prompt)} chars")
         print(f"DEBUG - Context chunks found: {len(context_chunks)}")
         print(f"DEBUG - First context chunk: {context_chunks[0] if context_chunks else 'NONE'}")
 
-        # Tokenize
+        # Tokenize with sufficient context window for multiple chunks
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
         
         print(f"DEBUG - Input token count: {inputs['input_ids'].shape[1]}")
 
-        # Generate
+        # Generate with stricter parameters
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
-                do_sample=True,
-                top_p=0.9,
-                pad_token_id=self.tokenizer.eos_token_id
+                do_sample=temperature > 0,
+                top_p=0.95,
+                repetition_penalty=1.15,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
             )
         
         print(f"DEBUG - Output token count: {outputs.shape[1]}")
 
-        # Decode
+        # Decode full output and just the generated part
         full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Decode only the newly generated tokens (excluding input)
+        input_length = inputs['input_ids'].shape[1]
+        generated_tokens = outputs[0][input_length:]
+        answer = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        
+        # Clean up the answer - remove incomplete sentences at the start
+        # Sometimes the model outputs partial text from context
+        if answer and not answer[0].isupper() and not answer[0].isdigit():
+            # Find the first sentence that starts properly
+            sentences = answer.split('. ')
+            for i, sent in enumerate(sentences):
+                sent = sent.strip()
+                if sent and (sent[0].isupper() or sent[0].isdigit() or sent[0] == '"'):
+                    answer = '. '.join(sentences[i:])
+                    break
+        
+        # Remove trailing incomplete sentences
+        if answer and not answer.endswith(('.', '!', '?', '"')):
+            last_period = answer.rfind('.')
+            last_question = answer.rfind('?')
+            last_exclaim = answer.rfind('!')
+            last_punct = max(last_period, last_question, last_exclaim)
+            if last_punct > len(answer) * 0.5:  # Only trim if we keep at least half
+                answer = answer[:last_punct + 1]
         
         print(f"DEBUG - Full model output length: {len(full_response)} chars")
         print(f"DEBUG - Full output preview: {full_response[:500]}")
-
-        # Extract only the answer (after "Answer:")
-        if "Answer:" in full_response:
-            answer = full_response.split("Answer:")[-1].strip()
-            print(f"DEBUG - Extracted answer after 'Answer:': {answer[:200]}")
-        else:
-            answer = full_response[len(prompt):].strip()
-            print(f"DEBUG - Extracted answer (no 'Answer:' found): {answer[:200]}")
+        print(f"DEBUG - Generated answer: {answer[:200]}")
         
         print(f"DEBUG - Final answer length: {len(answer)} chars")
 

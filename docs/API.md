@@ -36,10 +36,28 @@ Server will start on: `http://localhost:8000`
 
 ---
 
-## API Endpoints
+## API Endpoints Overview
+
+| Endpoint | Method | Description | Auth |
+|----------|--------|-------------|------|
+| `/api/chat` | POST | Chat with AI assistant | API Key |
+| `/api/files` | GET | List uploaded files | API Key |
+| `/api/files/{filename}` | DELETE | Delete specific file | API Key |
+| `/api/files` | DELETE | Delete all files | API Key |
+| `/api/urls` | GET | List scraped URLs | API Key |
+| `/api/urls/{filename}` | DELETE | Delete specific URL | API Key |
+| `/api/urls` | DELETE | Delete all URLs | API Key |
+| `/api/health` | GET | Health check | None |
+| `/admin/upload-file` | POST | Upload document | API Key |
+| `/admin/add-url` | POST | Add URL to scrape | API Key |
+| `/admin/logs` | GET | View server logs | Admin |
+
+---
+
+## Chat Endpoint
 
 ### 🔹 POST `/api/chat`
-**Chat with AI assistant**
+**Chat with AI assistant using RAG + LoRA**
 
 **Headers:**
 - `X-API-Key`: Your API key
@@ -47,24 +65,31 @@ Server will start on: `http://localhost:8000`
 **Request Body:**
 ```json
 {
-  "query": "How do I get a refund?",
+  "query": "Who founded Wikipedia and what are its content policies?",
   "top_k": 3,
-  "max_tokens": 150,
-  "temperature": 0.7
+  "max_tokens": 200,
+  "temperature": 0.3
 }
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | required | Your question |
+| `top_k` | int | 3 | Number of context chunks to retrieve |
+| `max_tokens` | int | 200 | Maximum response length |
+| `temperature` | float | 0.3 | Creativity (0.1 = focused, 1.0 = creative) |
 
 **Response:**
 ```json
 {
-  "query": "How do I get a refund?",
-  "domain": "ecommerce",
-  "company": "amazon",
+  "query": "Who founded Wikipedia?",
+  "domain": "education",
+  "company": "wikipedia",
   "sentiment": "neutral",
-  "sentiment_confidence": 0.92,
-  "response": "Based on our refund policy...",
-  "response_time_ms": 1250.5,
-  "timestamp": "2026-03-27T10:30:00"
+  "sentiment_confidence": 0.94,
+  "response": "Wikipedia was founded by Jimmy Wales and Larry Sanger in January 2001...",
+  "response_time_ms": 45000.5,
+  "timestamp": "2026-03-29T10:30:00"
 }
 ```
 
@@ -72,14 +97,156 @@ Server will start on: `http://localhost:8000`
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: sk_ecommerce_amazon_abc123" \
-  -d '{"query": "How do I return an item?"}'
+  -H "X-API-Key: sk_education_wikipedia_tes123" \
+  -d '{"query": "What is Wikipedia?", "top_k": 3}'
 ```
 
 ---
 
+## File Management
+
+### 🔹 GET `/api/files`
+**List all uploaded files for your domain/company**
+
+**Response:**
+```json
+{
+  "success": true,
+  "domain": "education",
+  "company": "wikipedia",
+  "files": [
+    {
+      "filename": "pdf_wikipedia_detailed.txt",
+      "file_type": "raw",
+      "size_bytes": 3043,
+      "created_at": "2026-03-29T10:00:00"
+    },
+    {
+      "filename": "wikipedia.pdf",
+      "file_type": "original",
+      "size_bytes": 15420,
+      "created_at": "2026-03-29T09:55:00"
+    }
+  ],
+  "total_count": 2
+}
+```
+
+**Example:**
+```bash
+curl -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/files
+```
+
+---
+
+### 🔹 DELETE `/api/files/{filename}`
+**Delete a specific file and rebuild vector store**
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Deleted 2 file(s). Vector store will be rebuilt.",
+  "domain": "education",
+  "company": "wikipedia",
+  "deleted_files": ["raw_data/pdf_old_doc.txt", "original_files/old_doc.pdf"],
+  "vector_store_rebuilt": true
+}
+```
+
+**Example:**
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/files/old_doc.pdf
+```
+
+---
+
+### 🔹 DELETE `/api/files`
+**Delete ALL files for your domain/company**
+
+⚠️ **Use with caution!** This deletes all files AND the vector store.
+
+**Example:**
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/files
+```
+
+---
+
+## URL Management
+
+### 🔹 GET `/api/urls`
+**List all scraped URLs for your domain/company**
+
+**Response:**
+```json
+{
+  "success": true,
+  "domain": "education",
+  "company": "wikipedia",
+  "urls": [
+    {
+      "filename": "url_wiki_Machine_learning.txt",
+      "original_url": "Machine learning - Wikipedia",
+      "size_bytes": 45000,
+      "created_at": "2026-03-29T08:00:00"
+    }
+  ],
+  "total_count": 1
+}
+```
+
+**Example:**
+```bash
+curl -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/urls
+```
+
+---
+
+### 🔹 DELETE `/api/urls/{filename}`
+**Delete a specific URL file and rebuild vector store**
+
+Use the filename from `/api/urls` listing (e.g., `url_wiki_Machine_learning.txt`).
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Deleted URL file 'url_wiki_Machine_learning.txt'. Vector store will be rebuilt.",
+  "domain": "education",
+  "company": "wikipedia",
+  "deleted_url": "url_wiki_Machine_learning.txt",
+  "vector_store_rebuilt": true
+}
+```
+
+**Example:**
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/urls/url_wiki_Machine_learning.txt
+```
+
+---
+
+### 🔹 DELETE `/api/urls`
+**Delete ALL URL files (keeps uploaded PDFs safe)**
+
+**Example:**
+```bash
+curl -X DELETE -H "X-API-Key: sk_education_wikipedia_tes123" \
+  http://localhost:8000/api/urls
+```
+
+---
+
+## Content Upload
+
 ### 🔹 POST `/admin/upload-file`
-**Upload PDF/DOCX/TXT document** (Any valid API key)
+**Upload PDF/DOCX/TXT document**
 
 **Headers:**
 - `X-API-Key`: Your API key (domain/company auto-detected)
@@ -92,10 +259,10 @@ curl -X POST http://localhost:8000/api/chat \
 {
   "success": true,
   "message": "File processed successfully",
-  "domain": "ecommerce",
-  "company": "amazon",
-  "original_path": "policies/ecommerce/amazon/refund.pdf",
-  "extracted_path": "raw_data/ecommerce/amazon/pdf_refund.txt",
+  "domain": "education",
+  "company": "wikipedia",
+  "original_path": "original_files/education/wikipedia/refund.pdf",
+  "extracted_path": "raw_data/education/wikipedia/pdf_refund.txt",
   "characters_extracted": 5420
 }
 ```
@@ -103,24 +270,21 @@ curl -X POST http://localhost:8000/api/chat \
 **Example:**
 ```bash
 curl -X POST http://localhost:8000/admin/upload-file \
-  -H "X-API-Key: sk_ecommerce_amazon_abc123" \
-  -F "file=@refund_policy.pdf"
+  -H "X-API-Key: sk_education_wikipedia_tes123" \
+  -F "file=@my_document.pdf"
 ```
 
-**Note:** Files are uploaded to your company's directory based on your API key.
+**Supported formats:** PDF, DOCX, DOC, TXT
 
 ---
 
 ### 🔹 POST `/admin/add-url`
-**Add URL to scrape** (Any valid API key)
-
-**Headers:**
-- `X-API-Key`: Your API key (domain/company auto-detected)
+**Add URL to scrape**
 
 **Request Body:**
 ```json
 {
-  "url": "https://example.com/help/refunds"
+  "url": "https://en.wikipedia.org/wiki/Wikipedia"
 }
 ```
 
@@ -129,9 +293,9 @@ curl -X POST http://localhost:8000/admin/upload-file \
 {
   "success": true,
   "message": "URL fetched and processed successfully",
-  "domain": "ecommerce",
-  "company": "amazon",
-  "url": "https://example.com/help/refunds"
+  "domain": "education",
+  "company": "wikipedia",
+  "url": "https://en.wikipedia.org/wiki/Wikipedia"
 }
 ```
 
@@ -139,13 +303,13 @@ curl -X POST http://localhost:8000/admin/upload-file \
 ```bash
 curl -X POST http://localhost:8000/admin/add-url \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: sk_ecommerce_amazon_abc123" \
-  -d '{"url": "https://example.com/help"}'
+  -H "X-API-Key: sk_education_wikipedia_tes123" \
+  -d '{"url": "https://en.wikipedia.org/wiki/Wikipedia"}'
 ```
 
-**Note:** URLs are fetched and stored in your company's directory based on your API key.
-
 ---
+
+## Health & Monitoring
 
 ### 🔹 GET `/api/health`
 **Check API health** (No auth required)
@@ -158,13 +322,8 @@ curl -X POST http://localhost:8000/admin/add-url \
   "loaded_adapters": ["ecommerce", "education", "telecom"],
   "sentiment_model_loaded": true,
   "vector_builder_active": true,
-  "timestamp": "2026-03-27T10:30:00"
+  "timestamp": "2026-03-29T10:30:00"
 }
-```
-
-**Example:**
-```bash
-curl http://localhost:8000/api/health
 ```
 
 ---
@@ -172,23 +331,8 @@ curl http://localhost:8000/api/health
 ### 🔹 GET `/admin/logs`
 **View API logs** (Admin only)
 
-**Headers:**
-- `X-API-Key`: Admin API key
-
 **Query Parameters:**
 - `lines`: Number of lines to return (default: 100)
-
-**Response:**
-```json
-{
-  "lines": [
-    "2026-03-27 10:30:00 - INFO - Chat request received",
-    "2026-03-27 10:30:01 - INFO - Response generated"
-  ],
-  "count": 100,
-  "total_lines": 5420
-}
-```
 
 **Example:**
 ```bash
@@ -200,189 +344,135 @@ curl http://localhost:8000/admin/logs?lines=50 \
 
 ## Authentication
 
-All endpoints (except `/api/health`) require an API key in the `X-API-Key` header.
+### Using Swagger UI (Recommended for Testing)
 
-### Standard API Keys
-- **Access to**:
-  - `/api/chat` - Chat with AI
-  - `/admin/upload-file` - Upload documents to your company
-  - `/admin/add-url` - Add URLs to scrape for your company
-- **Domain/company**: Automatically determined by key configuration
-- **Permissions**: Can only manage data for their own domain/company
+1. Open http://localhost:8000/docs
+2. Click the **"Authorize"** button (🔓 lock icon)
+3. Enter your API key (e.g., `sk_education_wikipedia_tes123`)
+4. Click "Authorize" → "Close"
+5. Now all endpoints will include your API key automatically
 
-### Admin API Keys
-- **Access to**: All endpoints including:
-  - `/admin/logs` - View server logs
-- **Permissions**: Full system access
-- **Listed in**: `admin_keys` array in `api_keys.json`
+### API Key Types
 
-**Note:** Upload and URL endpoints are no longer admin-only. Any valid API key holder can upload files and URLs for their own company.
+| Type | Access | Example |
+|------|--------|---------|
+| **User Key** | Chat, Upload, URLs, File Management | `sk_education_wikipedia_tes123` |
+| **Admin Key** | All above + Logs | `sk_admin_master_xyz999` |
+
+### Data Isolation
+
+Each API key only accesses its own domain/company data:
+- `sk_education_wikipedia_*` → `data/*/education/wikipedia/`
+- `sk_telecom_airtel_*` → `data/*/telecom/airtel/`
 
 ---
 
 ## Error Responses
 
-### 401 Unauthorized
-```json
-{
-  "detail": "Invalid API key"
-}
-```
+| Code | Meaning | Example |
+|------|---------|---------|
+| 401 | Invalid/missing API key | `{"detail": "Invalid API key"}` |
+| 403 | Admin access required | `{"detail": "Admin access required"}` |
+| 404 | Resource not found | `{"detail": "Vector store not found..."}` |
+| 500 | Server error | `{"detail": "Error generating response..."}` |
 
-### 403 Forbidden
-```json
-{
-  "detail": "Admin access required"
-}
-```
+---
 
-### 404 Not Found
-```json
-{
-  "detail": "Vector store not found for ecommerce/amazon. Please upload documents first."
-}
-```
+## Data Flow
 
-### 500 Internal Server Error
-```json
-{
-  "detail": "Error generating response: ..."
-}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER ACTIONS                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Upload PDF ──────┐                                             │
+│                    ▼                                             │
+│              ┌──────────┐    ┌──────────────┐    ┌───────────┐  │
+│   Add URL ───│ Raw Data │───▶│ Vector Store │───▶│    RAG    │  │
+│              └──────────┘    └──────────────┘    │  + LoRA   │  │
+│                    ▲               ▲             └─────┬─────┘  │
+│                    │               │                   │        │
+│   Delete File ─────┴── Rebuild ────┘                   ▼        │
+│   Delete URL ──────────────────────────────────── Response      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Startup Behavior
+## File Storage Structure
 
-When the server starts, it automatically:
-
-1. ✅ Loads `api_keys.json` for authentication
-2. ✅ Loads Phi-2 base model
-3. ✅ Pre-loads all 3 LoRA adapters (ecommerce, education, telecom)
-4. ✅ Loads sentiment model (cardiffnlp/twitter-roberta-base-sentiment-latest)
-5. ✅ Starts vector builder in watch mode (auto-rebuilds on file changes)
-
-**Startup logs:**
 ```
-============================================================
-NexusAI API Server Starting...
-============================================================
-Loaded 4 API keys
-Loaded 1 admin keys
-Loading sentiment model: cardiffnlp/twitter-roberta-base-sentiment-latest
-✓ Sentiment model loaded successfully
-Initializing RAG system...
-Loading ecommerce adapter...
-✓ ecommerce adapter loaded
-Loading education adapter...
-✓ education adapter loaded
-Loading telecom adapter...
-✓ telecom adapter loaded
-✓ RAG system ready with 3 adapters
-Starting vector builder in watch mode...
-✓ Vector builder watch mode started
-============================================================
-✓ Server startup complete!
-✓ Loaded adapters: ['ecommerce', 'education', 'telecom']
-✓ Sentiment model: Active
-✓ Vector builder: Active
-============================================================
+data/
+├── raw_data/                    # Extracted text (used for vectors)
+│   └── {domain}/
+│       └── {company}/
+│           ├── pdf_document.txt      # From PDF upload
+│           └── url_webpage.txt       # From URL scrape
+│
+├── original_files/              # Original uploads (preserved)
+│   └── {domain}/
+│       └── {company}/
+│           └── document.pdf
+│
+└── vector_stores/               # FAISS indexes
+    └── {domain}/
+        └── {company}/
+            ├── vector.index     # FAISS index
+            └── metadata.json    # Chunk metadata
 ```
 
 ---
 
-## Background Tasks
+## Best Practices
 
-### Vector Builder Watch Mode
-- Monitors `data/raw_data/` directory for changes
-- Automatically rebuilds vector stores when files are added/modified
-- Runs in background thread
-- Debounces to avoid duplicate rebuilds (5-second cooldown)
+### For Better Responses
 
-### Async Rebuilds
-- File uploads and URL fetches trigger vector store rebuilds
-- Runs in background (doesn't block API response)
-- Logs progress to `logs/api.log`
+1. **Upload comprehensive documents** (500+ words each)
+2. **Use `top_k=3` or higher** for complex questions
+3. **Increase `max_tokens`** for detailed answers
+4. **Keep related content together** in same domain/company
 
----
+### For Data Management
 
-## Logging
+1. **List before deleting**: Use `/api/files` or `/api/urls` first
+2. **Delete specific files**: Avoid bulk delete when possible
+3. **Check after delete**: Vector store rebuilds automatically
 
-All requests are logged to `logs/api.log` with:
-- Timestamp
-- Domain/company
-- Query (truncated)
-- Sentiment detected
-- Response time
-- Success/failure status
+### For Production
 
-**Example log entry:**
-```
-2026-03-27 10:30:00 - INFO - Chat request - Domain: ecommerce, Company: amazon, Query: How do I return an item?
-2026-03-27 10:30:00 - INFO - Sentiment: neutral (confidence: 0.920)
-2026-03-27 10:30:01 - INFO - Response generated in 1250.52ms - Sentiment: neutral
-```
-
----
-
-## Production Deployment
-
-### Using Uvicorn directly:
-```bash
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-### Using Gunicorn (recommended):
-```bash
-gunicorn src.main:app \
-  --workers 4 \
-  --worker-class uvicorn.workers.UvicornWorker \
-  --bind 0.0.0.0:8000 \
-  --timeout 120
-```
-
----
-
-## Security Best Practices
-
-1. **Use strong API keys** (32+ random characters)
-2. **Keep `api_keys.json` out of version control** (add to `.gitignore`)
-3. **Use HTTPS in production** (configure reverse proxy)
-4. **Rotate admin keys regularly**
-5. **Configure CORS properly** (restrict `allow_origins` in production)
-6. **Monitor `logs/api.log` for suspicious activity**
+1. **Use HTTPS** with reverse proxy (nginx/caddy)
+2. **Add GPU** for faster inference (10-20x speedup)
+3. **Implement caching** for frequent queries
+4. **Monitor logs** regularly
 
 ---
 
 ## Troubleshooting
 
-### Server won't start
-- Check `api_keys.json` exists and is valid JSON
-- Ensure all dependencies installed: `pip install -r requirements.txt`
-- Check ports aren't already in use
+### Empty or Wrong Responses
 
-### Chat endpoint returns 404
-- Vector store doesn't exist for domain/company
-- Upload documents via `/admin/upload-file` first
-- Or run `python src/vector_builder.py --build` manually
+| Problem | Cause | Solution |
+|---------|-------|----------|
+| Empty response | Token extraction issue | Server restart usually fixes |
+| Wrong topic | Irrelevant files in vector store | Delete unwanted files via `/api/files/{filename}` |
+| Partial answer | Low `top_k` or `max_tokens` | Increase parameters in request |
 
-### Slow responses
-- First request loads models (can take 10-30 seconds)
-- Subsequent requests are fast (models cached)
-- Consider using GPU for faster inference
+### Server Issues
 
-### Sentiment always "neutral"
-- Sentiment model may not have downloaded
-- Check `logs/api.log` for errors
-- Model downloads on first use (~500MB)
+| Problem | Solution |
+|---------|----------|
+| Port already in use | Kill existing: `Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess` |
+| Slow startup | Normal - models loading (~30-60 sec) |
+| Out of memory | Use smaller batch size or add swap |
 
 ---
 
-## Interactive API Documentation
+## Interactive Documentation
 
 Once server is running, visit:
 
-- **Swagger UI**: http://localhost:8000/docs
+- **Swagger UI**: http://localhost:8000/docs (Recommended)
 - **ReDoc**: http://localhost:8000/redoc
 
-Try out endpoints directly in the browser!
+Try out all endpoints directly in the browser!
