@@ -30,25 +30,33 @@ try:
 except ImportError:
     SCHEDULER_AVAILABLE = False
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('fetcher.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Configure logging only if running as main script (not when imported by main.py)
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('fetcher.log'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
 logger = logging.getLogger(__name__)
 
 
 class UniversalFetcher:
     """Handles web scraping, content tracking, and automatic updates."""
 
-    def __init__(self, base_dir: str = "."):
-        self.base_dir = Path(base_dir)
-        self.raw_data_dir = self.base_dir / "raw_data"
-        self.vector_stores_dir = self.base_dir / "vector_stores"
+    def __init__(self, base_dir: str = None):
+        # Default to project root (two levels above src/ subpackages)
+        if base_dir is None:
+            self.base_dir = Path(__file__).resolve().parents[2]
+        else:
+            self.base_dir = Path(base_dir)
+        
+        # Data directories are now in data/
+        self.raw_data_dir = self.base_dir / "data" / "raw_data"
+        self.vector_stores_dir = self.base_dir / "data" / "vector_stores"
 
     def _ensure_directories(self, domain: str, company: str) -> Tuple[Path, Path]:
         """Create necessary directory structure."""
@@ -367,16 +375,16 @@ def main():
         epilog="""
 Examples:
   # Fetch a single URL
-  python universal_fetcher.py --domain ecommerce --company amazon --input https://example.com/faq
+  python src/fetcher/universal_fetcher.py --domain ecommerce --company amazon --input https://example.com/faq
 
   # Check all tracked URLs for updates
-  python universal_fetcher.py --check-updates
+  python src/fetcher/universal_fetcher.py --check-updates
 
   # Start scheduler for nightly updates
-  python universal_fetcher.py --scheduler
+  python src/fetcher/universal_fetcher.py --scheduler
 
   # List all tracked URLs
-  python universal_fetcher.py --list
+  python src/fetcher/universal_fetcher.py --list
         """
     )
 
@@ -433,3 +441,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

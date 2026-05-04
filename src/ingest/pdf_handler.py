@@ -10,17 +10,24 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Union, BinaryIO
 
-# Set UTF-8 for Windows
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# Set UTF-8 for Windows (only when running standalone)
+if sys.platform == "win32" and __name__ == "__main__":
+    try:
+        import io
+        if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != 'utf-8':
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != 'utf-8':
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    except Exception:
+        pass
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configure logging only if running standalone
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
 logger = logging.getLogger(__name__)
 
 # Optional imports with availability flags
@@ -42,10 +49,16 @@ class DocumentHandler:
 
     SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.txt'}
 
-    def __init__(self, base_dir: str = "."):
-        self.base_dir = Path(base_dir)
-        self.raw_data_dir = self.base_dir / "raw_data"
-        self.policies_dir = self.base_dir / "policies"
+    def __init__(self, base_dir: str = None):
+        # Default to project root (two levels above src/ subpackages)
+        if base_dir is None:
+            self.base_dir = Path(__file__).resolve().parents[2]
+        else:
+            self.base_dir = Path(base_dir)
+        
+        # Data directories are now in data/
+        self.raw_data_dir = self.base_dir / "data" / "raw_data"
+        self.policies_dir = self.base_dir / "data" / "policies"
 
     def _ensure_directory(self, base_path: Path, domain: str, company: str) -> Path:
         """Create necessary directory structure."""
@@ -335,13 +348,13 @@ def main():
         epilog="""
 Examples:
   # Extract text only
-  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
+  python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
 
   # Save original + extract text
-  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon --save-original
+  python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon --save-original
 
   # List saved files
-  python pdf_handler.py --list --domain ecommerce --company amazon
+  python src/ingest/pdf_handler.py --list --domain ecommerce --company amazon
         """
     )
 
@@ -393,3 +406,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

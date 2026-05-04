@@ -1,178 +1,153 @@
-# NexusAI - ML Pipeline
+ # NexusAI ML Backend
 
-> Scalable AI-Based Customer Support System powered by LoRA fine-tuned Phi-2, domain detection, and vector stores.
-> **Architecture & AI Pipeline designed and built by [@BrozG](https://github.com/BrozG)**
+Scalable AI-based customer support backend powered by LoRA fine-tuned Phi-2, RAG, and vector stores.
 
----
-
-## Team Contributions
-
-| Contributor | Work Done |
-|---|---|
-| [@BrozG](https://github.com/BrozG) | System architecture design, LoRA fine-tuning pipeline, Domain classifier, Sentiment detection, Telecom data collection & vector store, Training pipeline |
-| [@KunalPayeng](https://github.com/KunalPayeng) | E-commerce domain data collection, E-commerce vector store creation |
-| [@kuhitjeetaray](https://github.com/kuhitjeetaray) | Education domain data collection, Education vector store creation |
-
----
-
-## Results at a Glance
-
-| Metric | Result |
-|---|---|
-| Domain Classifier Accuracy | **100%** |
-| LoRA vs Base Model Improvement | **Up to 257%** |
-| Telecom Training Loss Reduction | **82.8%** |
-| Sentiment Detection Confidence | **91.1%** |
-| Domains Supported | E-commerce, Education, Telecom |
-
----
-
-## System Architecture
-
-```
-User Query (Natural Language)
-        |
-        v
-+-------------------------+
-|   Sentiment Detection   |  <- Classifies: Angry / Neutral / Happy
-|   Confidence: 91.1%     |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Domain Classifier     |  <- Detects: E-commerce / Education / Telecom
-|   Accuracy: 100%        |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Vector Store Lookup   |  <- Retrieves relevant company policies/data
-|   (RAG Pipeline)        |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Phi-2 + LoRA Adapter  |  <- Domain-specific fine-tuned response
-|   (Frozen base model)   |
-+-------------------------+
-        |
-        v
-   Final Response to User
-```
-
----
-
-## Repository Structure
-
-```
-nexusai-ml/
-├── adapters/
-│   ├── ecommerce_adapter/     # LoRA weights for E-commerce domain
-│   ├── education_adapter/     # LoRA weights for Education domain
-│   └── telecom_adapter/       # LoRA weights for Telecom domain
-├── assets/                    # Training analysis images
-├── training_data/             # Training samples (JSON format)
-├── result/                    # Inference results and comparisons
-│
-├── # Core Pipeline Files
-├── universal_fetcher.py       # Web scraping with change detection
-├── pdf_handler.py             # Document processing (extract + save original)
-├── vector_builder.py          # FAISS vector store builder
-├── simple_rag.py              # RAG search + generation
-│
-├── # Generated at Runtime (gitignored)
-├── raw_data/                  # Extracted text from URLs/PDFs
-├── vector_stores/             # FAISS indexes and metadata
-├── policies/                  # Original uploaded PDFs
-├── url_tracker.json           # URL change tracking database
-│
-├── domain_classifier.pkl      # Trained domain classifier model
-├── training.ipynb             # Full training notebook
-├── requirements.txt           # Python dependencies
-└── README.md
-```
-
----
-
-## Installation
+## Quick Start (FastAPI)
 
 ```bash
-# Clone the repo
-git clone https://github.com/BrozG/nexusai-ml
-cd nexusai-ml
-
-# Install dependencies
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+# Configure API keys
+# Edit api_keys.json
+
+# Start server
+python run.py
 ```
 
----
+Open docs: http://localhost:8000/docs
 
-## Data Pipeline Usage
+Health check:
+```bash
+curl http://localhost:8000/api/health
+```
 
-### 1. Universal Fetcher (Web Scraping)
+## API Keys
 
-Fetches text from URLs with SHA256 change detection and automatic scheduling.
+Keys are stored in [api_keys.json](api_keys.json). Each key maps to a domain and company.
+
+Example:
+```json
+"sk_education_wikipedia_tes123": {
+        "domain": "education",
+        "company": "wikipedia",
+        "role": "user",
+        "description": "Wikipedia Education API Key"
+}
+```
+
+Generate a new key:
+```bash
+python -c "import secrets; print('sk_' + secrets.token_urlsafe(32))"
+```
+
+## Core Endpoints
+
+POST /api/chat
+```bash
+curl -X POST http://localhost:8000/api/chat \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: <your-key>" \
+        -d '{"query":"What is Wikipedia?","top_k":3,"max_tokens":150,"temperature":0.3}'
+```
+
+POST /api/chat/compare (base vs adapter)
+```bash
+curl -X POST http://localhost:8000/api/chat/compare \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: <your-key>" \
+        -d '{"query":"What is Wikipedia?","top_k":3,"max_tokens":150,"temperature":0.3}'
+```
+
+## Frontend Integration (BrozG/nexusai)
+
+Frontend repo: https://github.com/BrozG/nexusai
+
+### Run the UI
 
 ```bash
-# Show help
-python universal_fetcher.py --help
+git clone https://github.com/BrozG/nexusai
+cd nexusai
+npm install
 
-# Fetch a single URL
-python universal_fetcher.py --url "https://example.com/page" --domain education --company mit
+# Create .env.local
+# FASTAPI_URL=http://localhost:8000
 
-# Fetch multiple URLs from a file
-python universal_fetcher.py --url-file urls.txt --domain ecommerce --company amazon
-
-# Check all tracked URLs for changes
-python universal_fetcher.py --check-updates
-
-# Start scheduled updates (runs nightly at 2 AM)
-python universal_fetcher.py --schedule
-
-# Clean up old data (older than 30 days)
-python universal_fetcher.py --cleanup --days 30
+npm run dev
 ```
 
-**URL File Format (urls.txt):**
-```
-https://example.com/help
-https://example.com/faq
-https://example.com/policies
+### Connect UI to this backend
+
+The UI uses a Next.js API proxy at app/api/chat/route.ts. Update it to forward the `X-API-Key` header and send only the `query` (domain is inferred from the API key on the backend).
+
+Example proxy handler:
+```ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(req: NextRequest) {
+        const { api_key, query, top_k, max_tokens, temperature } = await req.json()
+
+        if (!api_key || !query) {
+                return NextResponse.json({ error: 'Missing api_key or query' }, { status: 400 })
+        }
+
+        const res = await fetch(`${process.env.FASTAPI_URL}/api/chat`, {
+                method: 'POST',
+                headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': api_key,
+                        'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({ query, top_k, max_tokens, temperature })
+        })
+
+        const data = await res.json()
+        return NextResponse.json({ response: data.response })
+}
 ```
 
-**Output Structure:**
+If you want domain switching in the UI, map each domain to its own API key and send the selected key from the client.
+
+## Project Structure
+
 ```
-raw_data/
-└── education/
-    └── mit/
-        ├── url_example_com_help.txt
-        ├── url_example_com_faq.txt
-        └── url_example_com_policies.txt
+nexsusai-ml/
+├── src/                    # FastAPI + RAG pipeline
+├── data/                   # Runtime data (raw, vector stores)
+├── adapters/               # LoRA adapters
+├── docs/                   # Documentation
+├── logs/                   # Server logs
+├── run.py                  # Server entrypoint
+├── api_keys.json           # API key config
+└── requirements.txt
 ```
 
----
+## Docs
 
-### 2. PDF Handler (Document Processing)
+- [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/API.md](docs/API.md)
 
 Extracts text from PDF, DOCX, and TXT files. Optionally saves original files.
 
 ```bash
 # Show help
-python pdf_handler.py --help
+python src/ingest/pdf_handler.py --help
 
 # Extract text only (saves to raw_data/)
-python pdf_handler.py --file document.pdf --domain ecommerce --company amazon
+python src/ingest/pdf_handler.py --file document.pdf --domain ecommerce --company amazon
 
 # Save original + extract text (saves to policies/ AND raw_data/)
-python pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
+python src/ingest/pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
 
 # List saved files
-python pdf_handler.py --list --domain ecommerce --company amazon
+python src/ingest/pdf_handler.py --list --domain ecommerce --company amazon
 ```
 
 **Python API (for WebUI):**
 ```python
-from pdf_handler import handle_pdf, handle_pdf_with_original
+from src.ingest.pdf_handler import handle_pdf, handle_pdf_with_original
 
 # Extract text only
 result = handle_pdf(file_bytes, "ecommerce", "amazon", "policy.pdf")
@@ -201,22 +176,22 @@ Builds searchable vector stores from extracted text.
 
 ```bash
 # Show help
-python vector_builder.py --help
+python src/vector/vector_builder.py --help
 
 # Build vector store for specific domain/company
-python vector_builder.py --build --domain education --company mit
+python src/vector/vector_builder.py --build --domain education --company mit
 
 # Build all vector stores
-python vector_builder.py --build-all
+python src/vector/vector_builder.py --build-all
 
 # Watch mode (auto-rebuild on file changes)
-python vector_builder.py --watch
+python src/vector/vector_builder.py --watch
 
 # Rebuild specific vector store
-python vector_builder.py --rebuild --domain ecommerce --company amazon
+python src/vector/vector_builder.py --rebuild --domain ecommerce --company amazon
 
 # Get vector store statistics
-python vector_builder.py --stats
+python src/vector/vector_builder.py --stats
 ```
 
 **Output Structure:**
@@ -236,19 +211,19 @@ Simplified RAG without domain classifier - you specify domain/company directly.
 
 ```bash
 # Show help
-python simple_rag.py --help
+python src/rag/simple_rag.py --help
 
 # Search only (no generation)
-python simple_rag.py --search "refund policy" --domain ecommerce --company amazon
+python src/rag/simple_rag.py --search "refund policy" --domain ecommerce --company amazon
 
 # Search with more results
-python simple_rag.py --search "grades" --domain education --company mit --top-k 5
+python src/rag/simple_rag.py --search "grades" --domain education --company mit --top-k 5
 
 # Full RAG (search + generate with Phi-2 + LoRA)
-python simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
+python src/rag/simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
 
 # Interactive mode
-python simple_rag.py --interactive --domain telecom --company airtel
+python src/rag/simple_rag.py --interactive --domain telecom --company airtel
 ```
 
 **Search Output Example:**
@@ -270,19 +245,19 @@ Results:
 
 ```bash
 # Step 1: Fetch data from web
-python universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
+python src/fetcher/universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
 
 # Step 2: Process PDF documents
-python pdf_handler.py --file handbook.pdf --domain education --company mit
+python src/ingest/pdf_handler.py --file handbook.pdf --domain education --company mit
 
 # Step 3: Build vector store
-python vector_builder.py --build --domain education --company mit
+python src/vector/vector_builder.py --build --domain education --company mit
 
 # Step 4: Search the knowledge base
-python simple_rag.py --search "admission requirements" --domain education --company mit
+python src/rag/simple_rag.py --search "admission requirements" --domain education --company mit
 
 # Optional: Start watch mode for auto-updates
-python vector_builder.py --watch
+python src/vector/vector_builder.py --watch
 ```
 
 ---
@@ -380,3 +355,6 @@ policies/           ->    raw_data/           ->    vector_stores/
 MIT
 
 Copyright (c) 2026 BrozG
+
+
+

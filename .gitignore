@@ -45,6 +45,10 @@ desktop.ini
 *.log
 logs/
 
+# API Keys (NEVER COMMIT)
+api_keys.json
+.env
+
 # Temp files
 *.tmp
 *.temp
