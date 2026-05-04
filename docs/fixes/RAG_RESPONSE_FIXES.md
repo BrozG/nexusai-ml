@@ -25,7 +25,7 @@ generated_tokens = outputs[0][input_length:]  # Slice tensor, not string
 answer = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 ```
 
-**File:** `src/simple_rag.py` (lines 266-269)
+**File:** `src/rag/simple_rag.py` (lines 266-269)
 
 ---
 
@@ -65,7 +65,7 @@ Input: {query}
 Output:"""
 ```
 
-**File:** `src/simple_rag.py` (lines 228-236)
+**File:** `src/rag/simple_rag.py` (lines 228-236)
 
 #### Fix B: Remove Polluting Data
 
@@ -90,7 +90,7 @@ for i, result in enumerate(results[:top_k], 1):
 context = "\n\n".join(context_parts)
 ```
 
-**File:** `src/simple_rag.py` (lines 207-216)
+**File:** `src/rag/simple_rag.py` (lines 207-216)
 
 ---
 
@@ -113,7 +113,7 @@ def _clean_response(self, response: str) -> str:
     """Remove partial sentences from start/end"""
     lines = response.strip().split('\n')
     cleaned_lines = []
-    
+
     for i, line in enumerate(lines):
         line = line.strip()
         if not line:
@@ -122,19 +122,19 @@ def _clean_response(self, response: str) -> str:
         if i == 0 and line[0].islower():
             continue
         cleaned_lines.append(line)
-    
+
     text = '\n'.join(cleaned_lines)
-    
+
     # Remove incomplete final sentence
     if text and not text.endswith(('.', '!', '?', '"', "'")):
         last_period = text.rfind('.')
         if last_period > len(text) * 0.5:  # Keep if >50% of content
             text = text[:last_period + 1]
-    
+
     return text.strip()
 ```
 
-**File:** `src/simple_rag.py` (lines 271-287)
+**File:** `src/rag/simple_rag.py` (lines 271-287)
 
 ---
 
@@ -217,8 +217,8 @@ curl -X POST http://localhost:8000/api/chat \
 
 | File | Changes |
 |------|---------|
-| `src/simple_rag.py` | Token extraction, prompt format, chunking, cleanup |
-| `src/main.py` | File/URL management endpoints, Swagger auth |
+| `src/rag/simple_rag.py` | Token extraction, prompt format, chunking, cleanup |
+| `src/server/main.py` | File/URL management endpoints, Swagger auth |
 | `data/raw_data/education/wikipedia/` | Removed polluting ML file |
 
 ---
@@ -232,3 +232,6 @@ For production deployment:
 3. **Caching** - Cache frequent queries
 4. **Streaming** - Return tokens as generated
 5. **Chunking improvements** - Semantic chunking instead of word-based
+
+
+

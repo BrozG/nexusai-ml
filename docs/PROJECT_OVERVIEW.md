@@ -10,11 +10,16 @@ nexsusai-ml/
 ├── requirements.txt            # Dependencies
 │
 ├── src/                        # Source code
-│   ├── main.py                 # FastAPI server
-│   ├── simple_rag.py           # RAG pipeline
-│   ├── pdf_handler.py          # Document processing
-│   ├── universal_fetcher.py    # Web scraping
-│   └── vector_builder.py       # FAISS indexing
+│   ├── server/                 # FastAPI server
+│   │   └── main.py
+│   ├── rag/                    # RAG pipeline
+│   │   └── simple_rag.py
+│   ├── ingest/                 # Document processing
+│   │   └── pdf_handler.py
+│   ├── fetcher/                # Web scraping
+│   │   └── universal_fetcher.py
+│   └── vector/                 # FAISS indexing
+│       └── vector_builder.py
 │
 ├── data/                       # Runtime data
 │   ├── policies/               # Original documents
@@ -117,7 +122,7 @@ curl -X POST http://localhost:8000/api/chat \
   -d '{"query": "What is your refund policy?"}'
 ```
 
-**Server URL**: http://localhost:8000  
+**Server URL**: http://localhost:8000
 **API Docs**: http://localhost:8000/docs
 
 ---
@@ -153,7 +158,7 @@ Headers: X-API-Key (admin)
 Body: FormData with file
 Returns: File paths + extraction stats
 
-POST /admin/add-url  
+POST /admin/add-url
 Headers: X-API-Key (admin)
 Body: {"url": "..."}
 Returns: Success/failure
@@ -175,28 +180,28 @@ Returns: System status + uptime
 ## 🎨 New Features (This Build)
 
 ### ✨ Sentiment Analysis
-**Status**: NOW IMPLEMENTED ✅  
-**Was**: Mentioned in README but missing  
+**Status**: NOW IMPLEMENTED ✅
+**Was**: Mentioned in README but missing
 **Now**: Fully integrated RoBERTa model, returns sentiment with every chat request
 
 ### ✨ API Server
-**Status**: NOW IMPLEMENTED ✅  
-**Was**: FastAPI listed in requirements but no server code  
+**Status**: NOW IMPLEMENTED ✅
+**Was**: FastAPI listed in requirements but no server code
 **Now**: Complete REST API with 5 endpoints, auth, logging
 
 ### ✨ Automated Background Processing
-**Status**: NOW IMPLEMENTED ✅  
-**Was**: Manual rebuild with `python vector_builder.py --build`  
+**Status**: NOW IMPLEMENTED ✅
+**Was**: Manual rebuild with `python src/vector/vector_builder.py --build`
 **Now**: Auto-rebuilds in background thread when files change
 
 ### ✨ API Key Authentication
-**Status**: NOW IMPLEMENTED ✅  
-**Was**: No authentication  
+**Status**: NOW IMPLEMENTED ✅
+**Was**: No authentication
 **Now**: Secure API key system with domain/company mapping
 
 ### ✨ Comprehensive Logging
-**Status**: NOW IMPLEMENTED ✅  
-**Was**: Basic console logs  
+**Status**: NOW IMPLEMENTED ✅
+**Was**: Basic console logs
 **Now**: Structured logging with timestamps, metrics, admin access
 
 ---
@@ -298,13 +303,13 @@ Swagger UI with:
 ## 🔐 Security
 
 ### Implemented
-✅ API key authentication  
-✅ Role-based access (admin vs user)  
-✅ Request logging (audit trail)  
-✅ Input validation (Pydantic)  
-✅ Error handling (proper HTTP codes)  
-✅ CORS configurable  
-✅ Secrets excluded from git  
+✅ API key authentication
+✅ Role-based access (admin vs user)
+✅ Request logging (audit trail)
+✅ Input validation (Pydantic)
+✅ Error handling (proper HTTP codes)
+✅ CORS configurable
+✅ Secrets excluded from git
 
 ### Recommended for Production
 - [ ] HTTPS (reverse proxy)
@@ -326,7 +331,7 @@ Swagger UI with:
 ### Scaling Options
 ```bash
 # Horizontal: Multiple workers
-gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker
+gunicorn src.server.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker
 
 # Vertical: GPU acceleration
 # Automatically uses CUDA if available
@@ -413,7 +418,7 @@ python run.py
 
 ### Production
 ```bash
-gunicorn src.main:app \
+gunicorn src.server.main:app \
   --workers 4 \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8000 \
@@ -488,3 +493,6 @@ docker run -p 8000:8000 nexusai
 **Ready for**: Integration with web UI, mobile apps, or any HTTP client
 
 **Status**: ✅ PRODUCTION READY
+
+
+

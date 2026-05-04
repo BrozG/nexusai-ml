@@ -22,7 +22,8 @@ import uvicorn
 
 # Configure logging ONCE for the entire application
 # Do this BEFORE any Windows console encoding fixes
-log_dir = Path(__file__).parent.parent / "logs"
+project_root = Path(__file__).resolve().parents[2]
+log_dir = project_root / "logs"
 log_dir.mkdir(exist_ok=True)
 
 # Create console handler with UTF-8 encoding support
@@ -62,18 +63,18 @@ if sys.platform == "win32":
 
 # Import local modules
 try:
-    from src.simple_rag import SimpleRAG
-    from src.pdf_handler import handle_pdf_with_original
-    from src.universal_fetcher import UniversalFetcher
-    from src.vector_builder import VectorStoreBuilder, watch_mode
+    from src.rag.simple_rag import SimpleRAG
+    from src.ingest.pdf_handler import handle_pdf_with_original
+    from src.fetcher.universal_fetcher import UniversalFetcher
+    from src.vector.vector_builder import VectorStoreBuilder, watch_mode
     DEPENDENCIES_AVAILABLE = True
 except ImportError:
     # Try relative imports (when running from src/)
     try:
-        from simple_rag import SimpleRAG
-        from pdf_handler import handle_pdf_with_original
-        from universal_fetcher import UniversalFetcher
-        from vector_builder import VectorStoreBuilder, watch_mode
+        from rag.simple_rag import SimpleRAG
+        from ingest.pdf_handler import handle_pdf_with_original
+        from fetcher.universal_fetcher import UniversalFetcher
+        from vector.vector_builder import VectorStoreBuilder, watch_mode
         DEPENDENCIES_AVAILABLE = True
     except ImportError as e:
         logger.error(f"Failed to import local modules: {e}")
@@ -98,6 +99,7 @@ class ChatRequest(BaseModel):
     top_k: Optional[int] = 3
     max_tokens: Optional[int] = 150
     temperature: Optional[float] = 0.7
+    compare_base: Optional[bool] = False
 
 
 class ChatResponse(BaseModel):
@@ -107,6 +109,19 @@ class ChatResponse(BaseModel):
     sentiment: str
     sentiment_confidence: float
     response: str
+    base_response: Optional[str] = None
+    response_time_ms: float
+    timestamp: str
+
+
+class ChatCompareResponse(BaseModel):
+    query: str
+    domain: str
+    company: str
+    sentiment: str
+    sentiment_confidence: float
+    adapter_response: str
+    base_response: str
     response_time_ms: float
     timestamp: str
 
@@ -142,54 +157,6 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
-class FileInfo(BaseModel):
-    filename: str
-    file_type: str  # 'raw' or 'original'
-    size_bytes: int
-    created_at: str
-
-
-class FileListResponse(BaseModel):
-    success: bool
-    domain: str
-    company: str
-    files: List[FileInfo]
-    total_count: int
-
-
-class FileDeleteResponse(BaseModel):
-    success: bool
-    message: str
-    domain: str
-    company: str
-    deleted_files: List[str]
-    vector_store_rebuilt: bool
-
-
-class URLInfo(BaseModel):
-    filename: str
-    original_url: str
-    size_bytes: int
-    created_at: str
-
-
-class URLListResponse(BaseModel):
-    success: bool
-    domain: str
-    company: str
-    urls: List[URLInfo]
-    total_count: int
-
-
-class URLDeleteResponse(BaseModel):
-    success: bool
-    message: str
-    domain: str
-    company: str
-    deleted_url: str
-    vector_store_rebuilt: bool
-
-
 # ============================================================================
 # GLOBAL STATE
 # ============================================================================
@@ -215,8 +182,8 @@ app_state = AppState()
 # STARTUP
 # ============================================================================
 
-# Project root directory (parent of src/)
-PROJECT_ROOT = Path(__file__).parent.parent
+# Project root directory (two levels above src/ subpackages)
+PROJECT_ROOT = project_root
 
 
 def load_api_keys():
@@ -355,10 +322,7 @@ def initialize_components():
 # AUTHENTICATION
 # ============================================================================
 
-# Define API Key security scheme for Swagger UI
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-def validate_api_key(x_api_key: Optional[str] = Security(api_key_header)) -> Dict:
+def validate_api_key(x_api_key: Optional[str] = Header(None)) -> Dict:
     """Validate API key and return domain/company info"""
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
@@ -370,7 +334,7 @@ def validate_api_key(x_api_key: Optional[str] = Security(api_key_header)) -> Dic
     return app_state.api_keys[x_api_key]
 
 
-def validate_admin_key(x_api_key: Optional[str] = Security(api_key_header)) -> Dict:
+def validate_admin_key(x_api_key: Optional[str] = Header(None)) -> Dict:
     """Validate admin API key"""
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
@@ -535,7 +499,8 @@ async def chat(
             company=company,
             top_k=request.top_k,
             max_new_tokens=request.max_tokens,
-            temperature=request.temperature
+            temperature=request.temperature,
+            include_base=request.compare_base
         )
         
         response_time_ms = (time.time() - start_time) * 1000
@@ -550,6 +515,7 @@ async def chat(
             sentiment=sentiment,
             sentiment_confidence=sentiment_conf,
             response=result["answer"],
+            base_response=result.get("base_answer"),
             response_time_ms=response_time_ms,
             timestamp=datetime.now().isoformat()
         )
@@ -562,6 +528,65 @@ async def chat(
         )
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
+
+
+@app.post("/api/chat/compare", response_model=ChatCompareResponse)
+async def chat_compare(
+    request: ChatRequest,
+    key_info: Dict = Depends(validate_api_key)
+):
+    """
+    Compare LoRA adapter response vs base model response.
+    """
+    start_time = time.time()
+
+    domain = key_info["domain"]
+    company = key_info["company"]
+    query = request.query
+
+    logger.info(f"Chat compare - Domain: {domain}, Company: {company}, Query: {query[:50]}...")
+
+    if app_state.rag is None:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
+
+    try:
+        sentiment, sentiment_conf = detect_sentiment(query)
+        logger.info(f"Sentiment: {sentiment} (confidence: {sentiment_conf:.3f})")
+
+        result = app_state.rag.generate(
+            query=query,
+            domain=domain,
+            company=company,
+            top_k=request.top_k,
+            max_new_tokens=request.max_tokens,
+            temperature=request.temperature,
+            include_base=True
+        )
+
+        response_time_ms = (time.time() - start_time) * 1000
+
+        logger.info(f"Compare response generated in {response_time_ms:.2f}ms - Sentiment: {sentiment}")
+
+        return ChatCompareResponse(
+            query=query,
+            domain=domain,
+            company=company,
+            sentiment=sentiment,
+            sentiment_confidence=sentiment_conf,
+            adapter_response=result["answer"],
+            base_response=result.get("base_answer") or "",
+            response_time_ms=response_time_ms,
+            timestamp=datetime.now().isoformat()
+        )
+    except FileNotFoundError as e:
+        logger.error(f"Vector store not found: {e}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Vector store not found for {domain}/{company}. Please upload documents first."
+        )
+    except Exception as e:
+        logger.error(f"Chat compare error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
 
 
@@ -678,353 +703,6 @@ async def add_url(
         raise HTTPException(status_code=500, detail=f"URL fetch failed: {str(e)}")
 
 
-@app.get("/api/files", response_model=FileListResponse)
-async def list_files(
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    List all uploaded files for the user's domain/company.
-    Shows both raw data files and original uploads.
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    files = []
-    
-    # Check raw_data folder
-    raw_data_path = PROJECT_ROOT / "data" / "raw_data" / domain / company
-    if raw_data_path.exists():
-        for file_path in raw_data_path.iterdir():
-            if file_path.is_file():
-                stat = file_path.stat()
-                files.append(FileInfo(
-                    filename=file_path.name,
-                    file_type="raw",
-                    size_bytes=stat.st_size,
-                    created_at=datetime.fromtimestamp(stat.st_ctime).isoformat()
-                ))
-    
-    # Check original_files folder
-    original_path = PROJECT_ROOT / "data" / "original_files" / domain / company
-    if original_path.exists():
-        for file_path in original_path.iterdir():
-            if file_path.is_file():
-                stat = file_path.stat()
-                files.append(FileInfo(
-                    filename=file_path.name,
-                    file_type="original",
-                    size_bytes=stat.st_size,
-                    created_at=datetime.fromtimestamp(stat.st_ctime).isoformat()
-                ))
-    
-    logger.info(f"Listed {len(files)} files for {domain}/{company}")
-    
-    return FileListResponse(
-        success=True,
-        domain=domain,
-        company=company,
-        files=files,
-        total_count=len(files)
-    )
-
-
-@app.delete("/api/files/{filename}")
-async def delete_file(
-    filename: str,
-    background_tasks: BackgroundTasks,
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    Delete a specific file and rebuild vector store.
-    Removes from both raw_data and original_files if present.
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    deleted_files = []
-    
-    # Delete from raw_data
-    raw_data_path = PROJECT_ROOT / "data" / "raw_data" / domain / company / filename
-    if raw_data_path.exists():
-        raw_data_path.unlink()
-        deleted_files.append(f"raw_data/{filename}")
-        logger.info(f"Deleted raw data: {raw_data_path}")
-    
-    # Also check for extracted text version (e.g., pdf_filename.txt)
-    txt_filename = f"pdf_{Path(filename).stem}.txt"
-    txt_path = PROJECT_ROOT / "data" / "raw_data" / domain / company / txt_filename
-    if txt_path.exists():
-        txt_path.unlink()
-        deleted_files.append(f"raw_data/{txt_filename}")
-        logger.info(f"Deleted extracted text: {txt_path}")
-    
-    # Also check url_ prefixed files
-    url_filename = f"url_{Path(filename).stem}.txt"
-    url_path = PROJECT_ROOT / "data" / "raw_data" / domain / company / url_filename
-    if url_path.exists():
-        url_path.unlink()
-        deleted_files.append(f"raw_data/{url_filename}")
-        logger.info(f"Deleted URL text: {url_path}")
-    
-    # Delete from original_files
-    original_path = PROJECT_ROOT / "data" / "original_files" / domain / company / filename
-    if original_path.exists():
-        original_path.unlink()
-        deleted_files.append(f"original_files/{filename}")
-        logger.info(f"Deleted original: {original_path}")
-    
-    if not deleted_files:
-        raise HTTPException(status_code=404, detail=f"File '{filename}' not found")
-    
-    # Rebuild vector store in background
-    def rebuild_vector_store():
-        try:
-            if app_state.vector_builder:
-                logger.info(f"Rebuilding vector store after deletion for {domain}/{company}")
-                app_state.vector_builder.build_vector_store(domain, company)
-                # Also clear from RAG cache
-                if app_state.rag:
-                    cache_key = f"{domain}/{company}"
-                    if cache_key in app_state.rag.vector_stores:
-                        del app_state.rag.vector_stores[cache_key]
-                logger.info(f"✓ Vector store rebuilt for {domain}/{company}")
-        except Exception as e:
-            logger.error(f"Failed to rebuild vector store: {e}")
-    
-    background_tasks.add_task(rebuild_vector_store)
-    
-    logger.info(f"✓ Deleted {len(deleted_files)} files for {domain}/{company}")
-    
-    return FileDeleteResponse(
-        success=True,
-        message=f"Deleted {len(deleted_files)} file(s). Vector store will be rebuilt.",
-        domain=domain,
-        company=company,
-        deleted_files=deleted_files,
-        vector_store_rebuilt=True
-    )
-
-
-@app.delete("/api/files")
-async def delete_all_files(
-    background_tasks: BackgroundTasks,
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    Delete ALL files for the user's domain/company and rebuild vector store.
-    Use with caution!
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    deleted_files = []
-    
-    # Delete all from raw_data
-    raw_data_path = PROJECT_ROOT / "data" / "raw_data" / domain / company
-    if raw_data_path.exists():
-        for file_path in raw_data_path.iterdir():
-            if file_path.is_file():
-                file_path.unlink()
-                deleted_files.append(f"raw_data/{file_path.name}")
-    
-    # Delete all from original_files
-    original_path = PROJECT_ROOT / "data" / "original_files" / domain / company
-    if original_path.exists():
-        for file_path in original_path.iterdir():
-            if file_path.is_file():
-                file_path.unlink()
-                deleted_files.append(f"original_files/{file_path.name}")
-    
-    # Delete vector store
-    vector_store_path = PROJECT_ROOT / "data" / "vector_stores" / domain / company
-    if vector_store_path.exists():
-        import shutil
-        shutil.rmtree(vector_store_path)
-        deleted_files.append(f"vector_stores/{domain}/{company}")
-        logger.info(f"Deleted vector store: {vector_store_path}")
-    
-    # Clear from RAG cache
-    if app_state.rag:
-        cache_key = f"{domain}/{company}"
-        if cache_key in app_state.rag.vector_stores:
-            del app_state.rag.vector_stores[cache_key]
-    
-    logger.info(f"✓ Deleted all {len(deleted_files)} files for {domain}/{company}")
-    
-    return FileDeleteResponse(
-        success=True,
-        message=f"Deleted all {len(deleted_files)} file(s) and vector store.",
-        domain=domain,
-        company=company,
-        deleted_files=deleted_files,
-        vector_store_rebuilt=False  # No rebuild needed - everything deleted
-    )
-
-
-@app.get("/api/urls", response_model=URLListResponse)
-async def list_urls(
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    List all scraped URLs for the user's domain/company.
-    Shows URL files (prefixed with 'url_') from raw_data.
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    urls = []
-    
-    # Check raw_data folder for url_ prefixed files
-    raw_data_path = PROJECT_ROOT / "data" / "raw_data" / domain / company
-    if raw_data_path.exists():
-        for file_path in raw_data_path.iterdir():
-            if file_path.is_file() and file_path.name.startswith("url_"):
-                stat = file_path.stat()
-                
-                # Try to extract original URL from file content (first line often has it)
-                original_url = "Unknown"
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        first_line = f.readline().strip()
-                        # Check if first line looks like a URL or title
-                        if first_line:
-                            original_url = first_line[:100]  # First 100 chars
-                except:
-                    pass
-                
-                urls.append(URLInfo(
-                    filename=file_path.name,
-                    original_url=original_url,
-                    size_bytes=stat.st_size,
-                    created_at=datetime.fromtimestamp(stat.st_ctime).isoformat()
-                ))
-    
-    logger.info(f"Listed {len(urls)} URLs for {domain}/{company}")
-    
-    return URLListResponse(
-        success=True,
-        domain=domain,
-        company=company,
-        urls=urls,
-        total_count=len(urls)
-    )
-
-
-@app.delete("/api/urls/{filename}")
-async def delete_url(
-    filename: str,
-    background_tasks: BackgroundTasks,
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    Delete a specific URL file and rebuild vector store.
-    Use the filename from /api/urls listing (e.g., 'url_wiki_Machine_learning.txt').
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    # Ensure it's a URL file
-    if not filename.startswith("url_"):
-        raise HTTPException(status_code=400, detail="Not a URL file. Use /api/files for other files.")
-    
-    # Delete from raw_data
-    url_path = PROJECT_ROOT / "data" / "raw_data" / domain / company / filename
-    if not url_path.exists():
-        raise HTTPException(status_code=404, detail=f"URL file '{filename}' not found")
-    
-    url_path.unlink()
-    logger.info(f"Deleted URL file: {url_path}")
-    
-    # Rebuild vector store in background
-    def rebuild_vector_store():
-        try:
-            if app_state.vector_builder:
-                logger.info(f"Rebuilding vector store after URL deletion for {domain}/{company}")
-                app_state.vector_builder.build_vector_store(domain, company)
-                # Also clear from RAG cache
-                if app_state.rag:
-                    cache_key = f"{domain}/{company}"
-                    if cache_key in app_state.rag.vector_stores:
-                        del app_state.rag.vector_stores[cache_key]
-                logger.info(f"✓ Vector store rebuilt for {domain}/{company}")
-        except Exception as e:
-            logger.error(f"Failed to rebuild vector store: {e}")
-    
-    background_tasks.add_task(rebuild_vector_store)
-    
-    logger.info(f"✓ Deleted URL for {domain}/{company}: {filename}")
-    
-    return URLDeleteResponse(
-        success=True,
-        message=f"Deleted URL file '{filename}'. Vector store will be rebuilt.",
-        domain=domain,
-        company=company,
-        deleted_url=filename,
-        vector_store_rebuilt=True
-    )
-
-
-@app.delete("/api/urls")
-async def delete_all_urls(
-    background_tasks: BackgroundTasks,
-    key_info: Dict = Depends(validate_api_key)
-):
-    """
-    Delete ALL URL files for the user's domain/company and rebuild vector store.
-    Only deletes url_ prefixed files, keeps uploaded PDFs/docs.
-    """
-    domain = key_info["domain"]
-    company = key_info["company"]
-    
-    deleted_urls = []
-    
-    # Delete all url_ files from raw_data
-    raw_data_path = PROJECT_ROOT / "data" / "raw_data" / domain / company
-    if raw_data_path.exists():
-        for file_path in raw_data_path.iterdir():
-            if file_path.is_file() and file_path.name.startswith("url_"):
-                file_path.unlink()
-                deleted_urls.append(file_path.name)
-    
-    if not deleted_urls:
-        return URLDeleteResponse(
-            success=True,
-            message="No URL files found to delete.",
-            domain=domain,
-            company=company,
-            deleted_url="none",
-            vector_store_rebuilt=False
-        )
-    
-    # Rebuild vector store in background
-    def rebuild_vector_store():
-        try:
-            if app_state.vector_builder:
-                logger.info(f"Rebuilding vector store after bulk URL deletion for {domain}/{company}")
-                app_state.vector_builder.build_vector_store(domain, company)
-                # Also clear from RAG cache
-                if app_state.rag:
-                    cache_key = f"{domain}/{company}"
-                    if cache_key in app_state.rag.vector_stores:
-                        del app_state.rag.vector_stores[cache_key]
-                logger.info(f"✓ Vector store rebuilt for {domain}/{company}")
-        except Exception as e:
-            logger.error(f"Failed to rebuild vector store: {e}")
-    
-    background_tasks.add_task(rebuild_vector_store)
-    
-    logger.info(f"✓ Deleted {len(deleted_urls)} URL files for {domain}/{company}")
-    
-    return URLDeleteResponse(
-        success=True,
-        message=f"Deleted {len(deleted_urls)} URL file(s). Vector store will be rebuilt.",
-        domain=domain,
-        company=company,
-        deleted_url=", ".join(deleted_urls),
-        vector_store_rebuilt=True
-    )
-
-
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
     """
@@ -1109,7 +787,7 @@ def main():
     logger.info(f"Starting server on {args.host}:{args.port}")
     
     uvicorn.run(
-        "src.main:app",
+        "src.server.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

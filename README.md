@@ -1,251 +1,170 @@
-# NexusAI - ML Pipeline
+ # NexusAI ML Backend
 
-> Scalable AI-Based Customer Support System powered by LoRA fine-tuned Phi-2, domain detection, and vector stores.
-> **Architecture & AI Pipeline designed and built by [@BrozG](https://github.com/BrozG)**
+Scalable AI-based customer support backend powered by LoRA fine-tuned Phi-2, RAG, and vector stores.
 
----
-
-## 🚀 Quick Start (FastAPI Server)
+## Quick Start (FastAPI)
 
 ```bash
-# Install dependencies
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# Configure API keys (edit api_keys.json)
+# Configure API keys
+# Edit api_keys.json
 
 # Start server
 python run.py
+```
 
-# Test health
+Open docs: http://localhost:8000/docs
+
+Health check:
+```bash
 curl http://localhost:8000/api/health
 ```
 
-See [docs/QUICKSTART.md](docs/QUICKSTART.md) for detailed setup.
+## API Keys
 
----
+Keys are stored in [api_keys.json](api_keys.json). Each key maps to a domain and company.
 
-## 📁 New Project Structure
+Example:
+```json
+"sk_education_wikipedia_tes123": {
+        "domain": "education",
+        "company": "wikipedia",
+        "role": "user",
+        "description": "Wikipedia Education API Key"
+}
+```
+
+Generate a new key:
+```bash
+python -c "import secrets; print('sk_' + secrets.token_urlsafe(32))"
+```
+
+## Core Endpoints
+
+POST /api/chat
+```bash
+curl -X POST http://localhost:8000/api/chat \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: <your-key>" \
+        -d '{"query":"What is Wikipedia?","top_k":3,"max_tokens":150,"temperature":0.3}'
+```
+
+POST /api/chat/compare (base vs adapter)
+```bash
+curl -X POST http://localhost:8000/api/chat/compare \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: <your-key>" \
+        -d '{"query":"What is Wikipedia?","top_k":3,"max_tokens":150,"temperature":0.3}'
+```
+
+## Frontend Integration (BrozG/nexusai)
+
+Frontend repo: https://github.com/BrozG/nexusai
+
+### Run the UI
+
+```bash
+git clone https://github.com/BrozG/nexusai
+cd nexusai
+npm install
+
+# Create .env.local
+# FASTAPI_URL=http://localhost:8000
+
+npm run dev
+```
+
+### Connect UI to this backend
+
+The UI uses a Next.js API proxy at app/api/chat/route.ts. Update it to forward the `X-API-Key` header and send only the `query` (domain is inferred from the API key on the backend).
+
+Example proxy handler:
+```ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(req: NextRequest) {
+        const { api_key, query, top_k, max_tokens, temperature } = await req.json()
+
+        if (!api_key || !query) {
+                return NextResponse.json({ error: 'Missing api_key or query' }, { status: 400 })
+        }
+
+        const res = await fetch(`${process.env.FASTAPI_URL}/api/chat`, {
+                method: 'POST',
+                headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': api_key,
+                        'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({ query, top_k, max_tokens, temperature })
+        })
+
+        const data = await res.json()
+        return NextResponse.json({ response: data.response })
+}
+```
+
+If you want domain switching in the UI, map each domain to its own API key and send the selected key from the client.
+
+## Project Structure
 
 ```
 nexsusai-ml/
-├── src/                    # Source code
-│   ├── main.py            # FastAPI server
-│   ├── simple_rag.py      # RAG pipeline
-│   ├── pdf_handler.py     # Document processing
-│   ├── universal_fetcher.py # Web scraping
-│   └── vector_builder.py  # FAISS builder
-├── data/                   # Runtime data
-│   ├── policies/          # Original files
-│   ├── raw_data/          # Extracted text
-│   └── vector_stores/     # FAISS indexes
+├── src/                    # FastAPI + RAG pipeline
+├── data/                   # Runtime data (raw, vector stores)
 ├── adapters/               # LoRA adapters
-├── training/               # Training files
-├── tests/                  # Test files
 ├── docs/                   # Documentation
 ├── logs/                   # Server logs
-├── run.py                 # Server launcher
-├── api_keys.json          # API config
+├── run.py                  # Server entrypoint
+├── api_keys.json           # API key config
 └── requirements.txt
 ```
 
----
+## Docs
 
-## Team Contributions
-
-| Contributor | Work Done |
-|---|---|
-| [@BrozG](https://github.com/BrozG) | System architecture design, LoRA fine-tuning pipeline, Domain classifier, Sentiment detection, Telecom data collection & vector store, Training pipeline |
-| [@KunalPayeng](https://github.com/KunalPayeng) | E-commerce domain data collection, E-commerce vector store creation |
-| [@kuhitjeetaray](https://github.com/kuhitjeetaray) | Education domain data collection, Education vector store creation |
-
----
-
-## Results at a Glance
-
-| Metric | Result |
-|---|---|
-| Domain Classifier Accuracy | **100%** |
-| LoRA vs Base Model Improvement | **Up to 257%** |
-| Telecom Training Loss Reduction | **82.8%** |
-| Sentiment Detection Confidence | **91.1%** |
-| Domains Supported | E-commerce, Education, Telecom |
-
----
-
-## System Architecture
-
-```
-User Query (Natural Language)
-        |
-        v
-+-------------------------+
-|   Sentiment Detection   |  <- Classifies: Angry / Neutral / Happy
-|   Confidence: 91.1%     |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Domain Classifier     |  <- Detects: E-commerce / Education / Telecom
-|   Accuracy: 100%        |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Vector Store Lookup   |  <- Retrieves relevant company policies/data
-|   (RAG Pipeline)        |
-+-------------------------+
-        |
-        v
-+-------------------------+
-|   Phi-2 + LoRA Adapter  |  <- Domain-specific fine-tuned response
-|   (Frozen base model)   |
-+-------------------------+
-        |
-        v
-   Final Response to User
-```
-
----
-
-## Repository Structure
-
-```
-nexsusai-ml/
-├── src/                       # Source code
-│   ├── main.py               # FastAPI server
-│   ├── simple_rag.py         # RAG search + generation
-│   ├── pdf_handler.py        # Document processing
-│   ├── universal_fetcher.py  # Web scraping
-│   └── vector_builder.py     # FAISS vector store builder
-│
-├── data/                      # Runtime data (gitignored)
-│   ├── policies/             # Original uploaded documents
-│   ├── raw_data/             # Extracted text from URLs/PDFs
-│   └── vector_stores/        # FAISS indexes and metadata
-│
-├── adapters/                  # LoRA weights
-│   ├── ecommerce_adapter/
-│   ├── education_adapter/
-│   └── telecom_adapter/
-│
-├── training/                  # Training resources
-│   ├── training.ipynb        # Training notebook
-│   ├── training_data/        # Training datasets (JSON)
-│   ├── training_result/      # Evaluation results
-│   └── training_assets/      # Analysis images
-│
-├── tests/                     # Test files
-│   └── test_api.py           # Automated test suite
-│
-├── docs/                      # Documentation
-│   ├── API.md
-│   ├── QUICKSTART.md
-│   ├── ARCHITECTURE.md
-│   └── ...
-│
-├── logs/                      # Server logs
-├── run.py                    # Server launcher
-├── api_keys.json             # API authentication config
-├── domain_classifier.pkl     # Domain classifier model
-├── requirements.txt          # Python dependencies
-└── README.md
-```
-
----
-
-## Installation
-
-```bash
-# Clone the repo
-git clone https://github.com/BrozG/nexusai-ml
-cd nexusai-ml
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
----
-
-## Data Pipeline Usage
-
-### 1. Universal Fetcher (Web Scraping)
-
-Fetches text from URLs with SHA256 change detection and automatic scheduling.
-
-```bash
-# Show help
-python src/universal_fetcher.py --help
-
-# Fetch a single URL
-python src/universal_fetcher.py --url "https://example.com/page" --domain education --company mit
-
-# Fetch multiple URLs from a file
-python src/universal_fetcher.py --url-file urls.txt --domain ecommerce --company amazon
-
-# Check all tracked URLs for changes
-python src/universal_fetcher.py --check-updates
-
-# Start scheduled updates (runs nightly at 2 AM)
-python src/universal_fetcher.py --schedule
-```
-
-**URL File Format (urls.txt):**
-```
-https://example.com/help
-https://example.com/faq
-https://example.com/policies
-```
-
-**Output Structure:**
-```
-data/raw_data/
-└── education/
-    └── mit/
-        ├── url_example_com_help.txt
-        ├── url_example_com_faq.txt
-        └── url_example_com_policies.txt
-```
-
----
-
-### 2. PDF Handler (Document Processing)
+- [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/API.md](docs/API.md)
 
 Extracts text from PDF, DOCX, and TXT files. Optionally saves original files.
 
 ```bash
 # Show help
-python src/pdf_handler.py --help
+python src/ingest/pdf_handler.py --help
 
-# Extract text only (saves to data/raw_data/)
-python src/pdf_handler.py --file document.pdf --domain ecommerce --company amazon
+# Extract text only (saves to raw_data/)
+python src/ingest/pdf_handler.py --file document.pdf --domain ecommerce --company amazon
 
-# Save original + extract text (saves to data/policies/ AND data/raw_data/)
-python src/pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
+# Save original + extract text (saves to policies/ AND raw_data/)
+python src/ingest/pdf_handler.py --file document.pdf --domain ecommerce --company amazon --save-original
 
 # List saved files
-python src/pdf_handler.py --list --domain ecommerce --company amazon
+python src/ingest/pdf_handler.py --list --domain ecommerce --company amazon
 ```
 
 **Python API (for WebUI):**
 ```python
-from src.pdf_handler import handle_pdf, handle_pdf_with_original
+from src.ingest.pdf_handler import handle_pdf, handle_pdf_with_original
 
 # Extract text only
 result = handle_pdf(file_bytes, "ecommerce", "amazon", "policy.pdf")
-# -> data/raw_data/ecommerce/amazon/pdf_policy.txt
+# -> raw_data/ecommerce/amazon/pdf_policy.txt
 
 # Save original + extract text
 result = handle_pdf_with_original(file_bytes, "ecommerce", "amazon", "policy.pdf")
-# -> data/policies/ecommerce/amazon/policy.pdf
-# -> data/raw_data/ecommerce/amazon/pdf_policy.txt
+# -> policies/ecommerce/amazon/policy.pdf
+# -> raw_data/ecommerce/amazon/pdf_policy.txt
 ```
 
 **Output Structure:**
 ```
-data/policies/                 # Original files (--save-original)
+policies/                      # Original files (--save-original)
 └── ecommerce/amazon/policy.pdf
 
-data/raw_data/                 # Extracted text
+raw_data/                      # Extracted text
 └── ecommerce/amazon/pdf_policy.txt
 ```
 
@@ -257,27 +176,27 @@ Builds searchable vector stores from extracted text.
 
 ```bash
 # Show help
-python src/vector_builder.py --help
+python src/vector/vector_builder.py --help
 
 # Build vector store for specific domain/company
-python src/vector_builder.py --build --domain education --company mit
+python src/vector/vector_builder.py --build --domain education --company mit
 
 # Build all vector stores
-python src/vector_builder.py --build-all
+python src/vector/vector_builder.py --build-all
 
 # Watch mode (auto-rebuild on file changes)
-python src/vector_builder.py --watch
+python src/vector/vector_builder.py --watch
 
 # Rebuild specific vector store
-python src/vector_builder.py --rebuild --domain ecommerce --company amazon
+python src/vector/vector_builder.py --rebuild --domain ecommerce --company amazon
 
 # Get vector store statistics
-python src/vector_builder.py --stats
+python src/vector/vector_builder.py --stats
 ```
 
 **Output Structure:**
 ```
-data/vector_stores/
+vector_stores/
 └── education/
     └── mit/
         ├── vector.index       # FAISS index file
@@ -292,19 +211,19 @@ Simplified RAG without domain classifier - you specify domain/company directly.
 
 ```bash
 # Show help
-python src/simple_rag.py --help
+python src/rag/simple_rag.py --help
 
 # Search only (no generation)
-python src/simple_rag.py --search "refund policy" --domain ecommerce --company amazon
+python src/rag/simple_rag.py --search "refund policy" --domain ecommerce --company amazon
 
 # Search with more results
-python src/simple_rag.py --search "grades" --domain education --company mit --top-k 5
+python src/rag/simple_rag.py --search "grades" --domain education --company mit --top-k 5
 
 # Full RAG (search + generate with Phi-2 + LoRA)
-python src/simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
+python src/rag/simple_rag.py --generate "How do I get a refund?" --domain ecommerce --company amazon
 
 # Interactive mode
-python src/simple_rag.py --interactive --domain telecom --company airtel
+python src/rag/simple_rag.py --interactive --domain telecom --company airtel
 ```
 
 **Search Output Example:**
@@ -326,19 +245,19 @@ Results:
 
 ```bash
 # Step 1: Fetch data from web
-python src/universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
+python src/fetcher/universal_fetcher.py --url "https://mit.edu/admissions" --domain education --company mit
 
 # Step 2: Process PDF documents
-python src/pdf_handler.py --file handbook.pdf --domain education --company mit
+python src/ingest/pdf_handler.py --file handbook.pdf --domain education --company mit
 
 # Step 3: Build vector store
-python src/vector_builder.py --build --domain education --company mit
+python src/vector/vector_builder.py --build --domain education --company mit
 
 # Step 4: Search the knowledge base
-python src/simple_rag.py --search "admission requirements" --domain education --company mit
+python src/rag/simple_rag.py --search "admission requirements" --domain education --company mit
 
 # Optional: Start watch mode for auto-updates
-python src/vector_builder.py --watch
+python src/vector/vector_builder.py --watch
 ```
 
 ---
@@ -346,7 +265,7 @@ python src/vector_builder.py --watch
 ## Three-Tier Storage Architecture
 
 ```
-data/policies/      ->    data/raw_data/      ->    data/vector_stores/
+policies/           ->    raw_data/           ->    vector_stores/
 (Original Files)          (Extracted Text)          (FAISS Index)
      |                         |                         |
      v                         v                         v
@@ -356,9 +275,9 @@ data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 
 | Tier | Purpose | Contents |
 |------|---------|----------|
-| `data/policies/` | Original file archive | Untouched uploaded PDFs |
-| `data/raw_data/` | Text extraction | Extracted text from URLs/PDFs |
-| `data/vector_stores/` | Search index | FAISS vectors + metadata |
+| `policies/` | Original file archive | Untouched uploaded PDFs |
+| `raw_data/` | Text extraction | Extracted text from URLs/PDFs |
+| `vector_stores/` | Search index | FAISS vectors + metadata |
 
 ---
 
@@ -366,7 +285,7 @@ data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 
 ### LoRA Adapter Training Analysis
 
-![LoRA Training Analysis](training/training_assets/lora_training_analysis_clean.png)
+![LoRA Training Analysis](assets/lora_training_analysis_clean.png)
 
 | Domain | Samples | Start Loss | End Loss | Reduction |
 |---|---|---|---|---|
@@ -378,7 +297,7 @@ data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 
 ### Base Phi-2 vs LoRA Fine-tuned - Quality Comparison
 
-![Base vs LoRA Comparison](training/training_assets/base_vs_lora_comparison_graph.png)
+![Base vs LoRA Comparison](assets/base_vs_lora_comparison_graph.png)
 
 | Domain | Base Phi-2 Score | LoRA Score | Improvement |
 |---|---|---|---|
@@ -390,7 +309,7 @@ data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 
 ### Domain Classifier Analysis
 
-![Domain Classifier Analysis](training/training_assets/domain_classifier_analysis.png)
+![Domain Classifier Analysis](assets/domain_classifier_analysis.png)
 
 | Domain | Precision | Recall | F1-Score |
 |---|---|---|---|
@@ -436,3 +355,6 @@ data/policies/      ->    data/raw_data/      ->    data/vector_stores/
 MIT
 
 Copyright (c) 2026 BrozG
+
+
+

@@ -498,3 +498,6 @@ curl http://localhost:8000/admin/logs?lines=10 -H "X-API-Key: sk_admin_master_xy
 ---
 
 **Your NexusAI API is ready for comprehensive testing!** 🚀
+
+
+

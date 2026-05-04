@@ -18,7 +18,7 @@ import os
 os.chdir(Path(__file__).parent)
 
 # Now import and run the server
-from main import main
+from server.main import main
 
 if __name__ == "__main__":
     main()

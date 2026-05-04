@@ -27,7 +27,7 @@ Use this checklist to ensure your NexusAI server is properly configured and runn
 ### 4. Initial Data (Optional)
 - [ ] Sample documents uploaded
 - [ ] Vector stores built for at least one domain/company
-- [ ] Test with: `python src/vector_builder.py --build`
+- [ ] Test with: `python src/vector/vector_builder.py --build`
 
 ---
 
@@ -198,7 +198,7 @@ Check logs show:
 - [ ] Invalid keys rejected (401)
 
 ### 3. Production Settings
-- [ ] CORS configured (change `allow_origins` in main.py)
+- [ ] CORS configured (change `allow_origins` in src/server/main.py)
 - [ ] HTTPS enabled (via reverse proxy)
 - [ ] Rate limiting configured (nginx/middleware)
 - [ ] Firewall allows only necessary ports
@@ -328,17 +328,20 @@ Set up automated health checks:
 
 Your NexusAI deployment is successful when:
 
-✅ Server starts in <60 seconds  
-✅ Health endpoint returns "healthy"  
-✅ All 3 LoRA adapters loaded  
-✅ Sentiment model active  
-✅ Vector builder running  
-✅ Chat requests respond in <2s  
-✅ Sentiment detection >80% confidence  
-✅ No errors in logs  
-✅ Backups configured  
-✅ Monitoring active  
+✅ Server starts in <60 seconds
+✅ Health endpoint returns "healthy"
+✅ All 3 LoRA adapters loaded
+✅ Sentiment model active
+✅ Vector builder running
+✅ Chat requests respond in <2s
+✅ Sentiment detection >80% confidence
+✅ No errors in logs
+✅ Backups configured
+✅ Monitoring active
 
 ---
 
 **When all checkboxes are complete, you're ready for production! 🎉**
+
+
+

@@ -15,11 +15,16 @@ nexsusai-ml/
 ├── requirements.txt       # Python dependencies
 │
 ├── src/                   # Source code
-│   ├── main.py           # FastAPI server
-│   ├── simple_rag.py     # RAG pipeline
-│   ├── pdf_handler.py    # Document processing
-│   ├── universal_fetcher.py
-│   └── vector_builder.py
+│   ├── server/            # FastAPI server
+│   │   └── main.py
+│   ├── rag/               # RAG pipeline
+│   │   └── simple_rag.py
+│   ├── ingest/            # Document processing
+│   │   └── pdf_handler.py
+│   ├── fetcher/           # Web scraping
+│   │   └── universal_fetcher.py
+│   └── vector/            # FAISS indexing
+│       └── vector_builder.py
 │
 ├── data/                  # Runtime data
 │   ├── policies/         # Original uploaded documents
@@ -44,7 +49,7 @@ nexsusai-ml/
 
 ## 📁 Key Files
 
-### 1. **src/main.py**
+### 1. **src/server/main.py**
 **The core FastAPI server**
 
 **Features**:
@@ -62,7 +67,7 @@ nexsusai-ml/
 ```
 POST   /api/chat              - Main chat with sentiment + RAG
 POST   /admin/upload-file     - Upload PDF/DOCX/TXT
-POST   /admin/add-url         - Scrape and process URLs  
+POST   /admin/add-url         - Scrape and process URLs
 GET    /api/health            - Health check (no auth)
 GET    /admin/logs            - View server logs (admin only)
 ```
@@ -150,10 +155,10 @@ python tests/test_api.py
 
 | Existing File | Function Called | Purpose |
 |--------------|----------------|---------|
-| **simple_rag.py** | `SimpleRAG.generate()` | AI response generation |
-| **pdf_handler.py** | `handle_pdf_with_original()` | Document processing |
-| **universal_fetcher.py** | `UniversalFetcher.fetch_url()` | Web scraping |
-| **vector_builder.py** | `watch_mode()`, `build_vector_store()` | Index building |
+| **src/rag/simple_rag.py** | `SimpleRAG.generate()` | AI response generation |
+| **src/ingest/pdf_handler.py** | `handle_pdf_with_original()` | Document processing |
+| **src/fetcher/universal_fetcher.py** | `UniversalFetcher.fetch_url()` | Web scraping |
+| **src/vector/vector_builder.py** | `watch_mode()`, `build_vector_store()` | Index building |
 
 ---
 
@@ -163,7 +168,7 @@ python tests/test_api.py
 1. Load api_keys.json
 2. Load Phi-2 base model (~2.7GB)
 3. Pre-load 3 LoRA adapters
-4. Load sentiment model (~500MB)  
+4. Load sentiment model (~500MB)
 5. Initialize fetcher
 6. Start vector_builder (background thread)
 7. Server ready (http://localhost:8000)
@@ -178,9 +183,9 @@ python tests/test_api.py
 ### Before (Separate CLI Tools)
 ```bash
 # Manual steps required
-python src/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
-python src/vector_builder.py --build --domain ecommerce --company amazon  
-python src/simple_rag.py --generate "query" --domain ecommerce --company amazon
+python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
+python src/vector/vector_builder.py --build --domain ecommerce --company amazon
+python src/rag/simple_rag.py --generate "query" --domain ecommerce --company amazon
 ```
 
 ### After (One API Server)
@@ -231,3 +236,6 @@ curl -X POST http://localhost:8000/api/chat -d '{"query": "question"}'
 ---
 
 **Result: A fully functional, production-ready FastAPI server that ties together all NexusAI components!** 🚀
+
+
+

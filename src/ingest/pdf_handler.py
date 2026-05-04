@@ -50,9 +50,9 @@ class DocumentHandler:
     SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.txt'}
 
     def __init__(self, base_dir: str = None):
-        # Default to project root (parent of src/)
+        # Default to project root (two levels above src/ subpackages)
         if base_dir is None:
-            self.base_dir = Path(__file__).parent.parent
+            self.base_dir = Path(__file__).resolve().parents[2]
         else:
             self.base_dir = Path(base_dir)
         
@@ -348,13 +348,13 @@ def main():
         epilog="""
 Examples:
   # Extract text only
-  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
+  python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
 
   # Save original + extract text
-  python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon --save-original
+  python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon --save-original
 
   # List saved files
-  python pdf_handler.py --list --domain ecommerce --company amazon
+  python src/ingest/pdf_handler.py --list --domain ecommerce --company amazon
         """
     )
 
@@ -406,3 +406,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

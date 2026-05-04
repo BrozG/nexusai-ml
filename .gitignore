@@ -64,6 +64,3 @@ url_tracker.json
 
 # Embedding model cache
 embedding_model/
-
-# Model offload directory (memory management)
-model_offload/

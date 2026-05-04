@@ -82,7 +82,7 @@ Called in startup event before any logging.
 
 2. **Restart:**
    ```bash
-   python main.py
+   python src/server/main.py
    ```
 
 3. **Watch for:**
@@ -99,7 +99,7 @@ Called in startup event before any logging.
    ```bash
    curl http://localhost:8000/api/health
    ```
-   
+
    Expected:
    ```json
    {
@@ -134,13 +134,16 @@ For most systems with 16GB+ RAM, this will work fine. Phi-2 is only ~3GB.
 
 ## Files Modified
 
-- **simple_rag.py** (lines 48-68): Changed model loading strategy
-- **main.py** (lines 191-203): Added `clear_old_logs()` function
-- **main.py** (lines 380-383): Call `clear_old_logs()` on startup
+- **src/rag/simple_rag.py** (lines 48-68): Changed model loading strategy
+- **src/server/main.py** (lines 191-203): Added `clear_old_logs()` function
+- **src/server/main.py** (lines 380-383): Call `clear_old_logs()` on startup
 
 ---
 
-**Status:** FIXED ✅  
-**Date:** 2026-03-27  
+**Status:** FIXED ✅
+**Date:** 2026-03-27
 **Verification:** Restart server and check health endpoint
+
+
+
 

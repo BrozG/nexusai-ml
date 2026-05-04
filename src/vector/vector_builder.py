@@ -155,7 +155,7 @@ class VectorStoreBuilder:
     ):
         # Default to project root (parent of src/)
         if base_dir is None:
-            self.base_dir = Path(__file__).parent.parent
+            self.base_dir = Path(__file__).resolve().parents[2]
         else:
             self.base_dir = Path(base_dir)
         
@@ -560,13 +560,13 @@ def main():
         epilog="""
 Examples:
   # Build all vector stores once
-  python vector_builder.py --build
+  python src/vector/vector_builder.py --build
 
   # Watch for changes and auto-rebuild
-  python vector_builder.py --watch
+  python src/vector/vector_builder.py --watch
 
   # Use custom embedding model
-  python vector_builder.py --build --model sentence-transformers/all-mpnet-base-v2
+  python src/vector/vector_builder.py --build --model sentence-transformers/all-mpnet-base-v2
         """
     )
 
@@ -611,3 +611,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

@@ -15,10 +15,10 @@ This occurred after FAISS loaded successfully.
 **The issue had TWO layers:**
 
 ### Layer 1: Multiple Logging Configurations (Initial Issue)
-- `main.py` configured logging with `logging.basicConfig()`
-- `vector_builder.py` also configured logging with `logging.basicConfig()`
-- `universal_fetcher.py` also configured logging with `logging.basicConfig()`
-- `pdf_handler.py` also configured logging with `logging.basicConfig()`
+- `src/server/main.py` configured logging with `logging.basicConfig()`
+- `src/vector/vector_builder.py` also configured logging with `logging.basicConfig()`
+- `src/fetcher/universal_fetcher.py` also configured logging with `logging.basicConfig()`
+- `src/ingest/pdf_handler.py` also configured logging with `logging.basicConfig()`
 
 ### Layer 2: sys.stdout/sys.stderr Wrapping Conflict (Real Culprit)
 **This was the actual crash cause:**
@@ -47,7 +47,7 @@ logging.basicConfig(
 
 ## The Complete Solution
 
-### 1. Fixed main.py - Proper Initialization Order
+### 1. Fixed src/server/main.py - Proper Initialization Order
 
 **BEFORE:**
 ```python
@@ -87,7 +87,7 @@ if sys.platform == "win32":
 
 ### 2. Fixed All Module Files
 
-Applied to: `vector_builder.py`, `pdf_handler.py`, `simple_rag.py`, `universal_fetcher.py`
+Applied to: `src/vector/vector_builder.py`, `src/ingest/pdf_handler.py`, `src/rag/simple_rag.py`, `src/fetcher/universal_fetcher.py`
 
 ```python
 # Only configure when running as standalone script
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         # Only wrap if not already wrapped
         if not isinstance(sys.stdout, io.TextIOWrapper):
             sys.stdout = io.TextIOWrapper(...)
-    
+
     logging.basicConfig(...)
 
 logger = logging.getLogger(__name__)
@@ -124,13 +124,13 @@ def run_watch():
 Initial state:
   sys.stdout = <original stdout>
 
-main.py executes:
+src/server/main.py executes:
   sys.stdout = TextIOWrapper(original)  # Wrapper A
   logging creates: StreamHandler(wrapper A)
 
-vector_builder.py imports:
+src/vector/vector_builder.py imports:
   sys.stdout = TextIOWrapper(wrapper A.buffer)  # Wrapper B (wraps wrapper A!)
-  
+
 Now wrapper A is orphaned and may be closed
   → StreamHandler tries to write to wrapper A
   → ValueError: I/O operation on closed file
@@ -139,16 +139,16 @@ Now wrapper A is orphaned and may be closed
 ### Fixed Flow
 
 ```
-main.py:
+src/server/main.py:
   1. Create logging handlers (use original stdout)
   2. Configure logging
   3. THEN wrap stdout (only if needed)
 
-vector_builder.py (imported):
+src/vector/vector_builder.py (imported):
   1. Check if __name__ == "__main__" → NO
   2. Skip stream wrapping
   3. Skip logging config
-  4. Use logger inherited from main.py
+  4. Use logger inherited from src/server/main.py
   ✓ No conflicts!
 ```
 
@@ -156,17 +156,17 @@ vector_builder.py (imported):
 
 | File | Changes | Why |
 |------|---------|-----|
-| `main.py` | - Reordered initialization<br>- Check before wrapping<br>- Manual handler creation | Prevent stream conflicts |
-| `vector_builder.py` | - Conditional wrapping<br>- Conditional logging | Only when standalone |
-| `pdf_handler.py` | - Conditional wrapping<br>- Conditional logging | Only when standalone |
-| `simple_rag.py` | - Conditional wrapping | Only when standalone |
-| `universal_fetcher.py` | Already fixed | Already conditional |
+| `src/server/main.py` | - Reordered initialization<br>- Check before wrapping<br>- Manual handler creation | Prevent stream conflicts |
+| `src/vector/vector_builder.py` | - Conditional wrapping<br>- Conditional logging | Only when standalone |
+| `src/ingest/pdf_handler.py` | - Conditional wrapping<br>- Conditional logging | Only when standalone |
+| `src/rag/simple_rag.py` | - Conditional wrapping | Only when standalone |
+| `src/fetcher/universal_fetcher.py` | Already fixed | Already conditional |
 
 ## Testing Instructions
 
 ### Manual Test
 ```bash
-python main.py
+python src/server/main.py
 ```
 
 **Expected output:**
@@ -180,7 +180,7 @@ python main.py
 2026-03-27 17:10:30 - __main__ - INFO - ✓ Server startup complete!
 ```
 
-**NO "I/O operation on closed file" error!** ✅  
+**NO "I/O operation on closed file" error!** ✅
 **NO "lost sys.stderr" message!** ✅
 
 ### Automated Test
@@ -231,39 +231,39 @@ Ensures logs appear immediately (not buffered).
 
 All standalone scripts work exactly as before:
 ```bash
-python vector_builder.py --build
-python pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
-python universal_fetcher.py --domain ecommerce --company amazon --input https://example.com
-python simple_rag.py --search "query" --domain ecommerce --company amazon
+python src/vector/vector_builder.py --build
+python src/ingest/pdf_handler.py --file doc.pdf --domain ecommerce --company amazon
+python src/fetcher/universal_fetcher.py --domain ecommerce --company amazon --input https://example.com
+python src/rag/simple_rag.py --search "query" --domain ecommerce --company amazon
 ```
 
 ## Common Issues & Solutions
 
 ### Issue: "lost sys.stderr" message
-**Cause:** Stream wrapping happening before logging setup  
+**Cause:** Stream wrapping happening before logging setup
 **Solution:** ✅ Fixed - logging configured first
 
 ### Issue: "I/O operation on closed file"
-**Cause:** Multiple stream wrappers conflicting  
+**Cause:** Multiple stream wrappers conflicting
 **Solution:** ✅ Fixed - only wrap once, check before wrapping
 
 ### Issue: Unicode characters not displaying
-**Cause:** UTF-8 encoding not set  
+**Cause:** UTF-8 encoding not set
 **Solution:** ✅ Fixed - wrap streams after logging, with exception handling
 
 ### Issue: Logs not appearing in console
-**Cause:** StreamHandler using closed stream  
+**Cause:** StreamHandler using closed stream
 **Solution:** ✅ Fixed - StreamHandler created before wrapping
 
 ## Summary
 
-**Problem**: Stream wrapping before logging → closed file handlers  
-**Solution**: Configure logging first, then wrap streams safely  
-**Result**: Clean startup, proper encoding, no crashes  
+**Problem**: Stream wrapping before logging → closed file handlers
+**Solution**: Configure logging first, then wrap streams safely
+**Result**: Clean startup, proper encoding, no crashes
 
-**Root Cause**: Initialization order + stream re-wrapping  
-**Fix Complexity**: Medium (multiple files, careful ordering)  
-**Testing**: Automated test included  
+**Root Cause**: Initialization order + stream re-wrapping
+**Fix Complexity**: Medium (multiple files, careful ordering)
+**Testing**: Automated test included
 
 **Status**: ✅ FULLY FIXED
 
@@ -288,7 +288,7 @@ After deploying the fix:
 ### Before Fix
 
 ```python
-# main.py
+# src/server/main.py
 logging.basicConfig(
     handlers=[
         logging.FileHandler(log_dir / 'api.log', encoding='utf-8'),
@@ -296,7 +296,7 @@ logging.basicConfig(
     ]
 )
 
-# vector_builder.py (imported by main.py)
+# src/vector/vector_builder.py (imported by src/server/main.py)
 logging.basicConfig(  # ← This reconfigures logging!
     handlers=[
         logging.FileHandler('vector_builder.log', encoding='utf-8'),
@@ -313,7 +313,7 @@ When `basicConfig()` is called multiple times:
 ### Thread Race Condition
 
 ```
-T=0s:  main.py configures logging (api.log)
+T=0s:  src/server/main.py configures logging (api.log)
 T=1s:  import vector_builder → reconfigures logging (vector_builder.log)
 T=2s:  Background thread starts
 T=3s:  Thread tries to log → uses CLOSED file handler → CRASH
@@ -321,7 +321,7 @@ T=3s:  Thread tries to log → uses CLOSED file handler → CRASH
 
 ## Solution
 
-### 1. Fixed Logging Configuration in main.py
+### 1. Fixed Logging Configuration in src/server/main.py
 
 ```python
 # Only configure if not already configured
@@ -342,7 +342,7 @@ if not logging.getLogger().handlers:
 - Use `mode='a'` for append (safer for multiple processes)
 - Use `force=True` to ensure clean reconfiguration
 
-### 2. Fixed Module-Level Logging (vector_builder.py, universal_fetcher.py)
+### 2. Fixed Module-Level Logging (src/vector/vector_builder.py, src/fetcher/universal_fetcher.py)
 
 ```python
 # Configure logging only if running as main script
@@ -377,19 +377,19 @@ async def startup_event():
     try:
         logger.info("Step 1/5: Loading API keys...")
         load_api_keys()
-        
+
         logger.info("Step 2/5: Loading sentiment model...")
         load_sentiment_model()
-        
+
         logger.info("Step 3/5: Initializing RAG system...")
         load_rag_system()
-        
+
         logger.info("Step 4/5: Initializing components...")
         initialize_components()
-        
+
         logger.info("Step 5/5: Starting vector builder watch mode...")
         start_vector_builder_watch()
-        
+
     except Exception as e:
         logger.error(f"Failed to start server: {e}", exc_info=True)
         raise
@@ -404,16 +404,16 @@ async def startup_event():
 
 | File | Change | Why |
 |------|--------|-----|
-| `main.py` | Fixed logging config | Prevent reconfiguration conflicts |
-| `vector_builder.py` | Conditional logging | Only configure when run standalone |
-| `universal_fetcher.py` | Conditional logging | Only configure when run standalone |
+| `src/server/main.py` | Fixed logging config | Prevent reconfiguration conflicts |
+| `src/vector/vector_builder.py` | Conditional logging | Only configure when run standalone |
+| `src/fetcher/universal_fetcher.py` | Conditional logging | Only configure when run standalone |
 | `test_startup.py` | New test script | Verify fix works |
 
 ## Testing
 
 ### Manual Test
 ```bash
-python main.py
+python src/server/main.py
 ```
 
 Should see:
@@ -454,7 +454,7 @@ This will:
 
 ### Before
 ```
-main.py → configure logging (api.log)
+src/server/main.py → configure logging (api.log)
          → import vector_builder
             → reconfigure logging (vector_builder.log) ← CLOSES api.log handlers
          → start background thread
@@ -463,7 +463,7 @@ main.py → configure logging (api.log)
 
 ### After
 ```
-main.py → configure logging (api.log)
+src/server/main.py → configure logging (api.log)
          → import vector_builder
             → NO reconfiguration (checks __name__)
          → start background thread
@@ -480,7 +480,7 @@ main.py → configure logging (api.log)
 ### 2. Clean Separation
 - Module scripts can still be run standalone
 - They configure their own logging when needed
-- But defer to main.py when imported
+- But defer to src/server/main.py when imported
 
 ### 3. Better Error Messages
 ```python
@@ -493,20 +493,20 @@ Makes debugging easier!
 ## Logging Hierarchy
 
 ```
-Main Application (main.py)
+Main Application (src/server/main.py)
 ├── logs/api.log           ← ALL logs go here when run as server
 └── StreamHandler (stdout) ← Console output
 
 Standalone Scripts
-├── vector_builder.py → vector_builder.log (when run standalone)
-└── universal_fetcher.py → fetcher.log (when run standalone)
+├── src/vector/vector_builder.py → vector_builder.log (when run standalone)
+└── src/fetcher/universal_fetcher.py → fetcher.log (when run standalone)
 ```
 
 ## Backward Compatibility
 
 ✅ **No breaking changes!**
 
-- Standalone scripts still work: `python vector_builder.py --build`
+- Standalone scripts still work: `python src/vector/vector_builder.py --build`
 - Server mode uses centralized logging
 - All existing functionality preserved
 
@@ -525,7 +525,7 @@ For even more robust logging:
 1. **Use rotating file handlers**
    ```python
    from logging.handlers import RotatingFileHandler
-   
+
    handler = RotatingFileHandler(
        'logs/api.log',
        maxBytes=10*1024*1024,  # 10MB
@@ -558,12 +558,15 @@ After deploying the fix:
 - [ ] Background thread starts successfully
 - [ ] Health endpoint returns 200
 - [ ] No "I/O operation on closed file" errors
-- [ ] Standalone scripts still work (`python vector_builder.py --build`)
+- [ ] Standalone scripts still work (`python src/vector/vector_builder.py --build`)
 
 ## Summary
 
-**Problem**: Multiple `logging.basicConfig()` calls caused file handler conflicts  
-**Solution**: Centralized logging in main.py, conditional config in modules  
-**Result**: Clean startup, no crashes, all logs in one place  
+**Problem**: Multiple `logging.basicConfig()` calls caused file handler conflicts
+**Solution**: Centralized logging in src/server/main.py, conditional config in modules
+**Result**: Clean startup, no crashes, all logs in one place
 
 **Status**: ✅ FIXED
+
+
+

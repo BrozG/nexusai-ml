@@ -2,7 +2,7 @@
 
 ## Change Summary
 
-**Date**: 2026-03-27  
+**Date**: 2026-03-27
 **Change**: Opened file upload and URL scraping endpoints to all valid API key holders
 
 ---
@@ -25,7 +25,7 @@
 
 ## Technical Changes
 
-### main.py
+### src/server/main.py
 
 **Upload File Endpoint:**
 ```python
@@ -269,7 +269,7 @@ print(response.json())
 ## Documentation Updated
 
 Files updated to reflect this change:
-- ✅ `main.py` - Endpoint validation changed
+- ✅ `src/server/main.py` - Endpoint validation changed
 - ✅ `README_API.md` - API documentation updated
 - ✅ `test_api.py` - Test script updated
 - ✅ This document - Change summary
@@ -299,3 +299,6 @@ Depends(validate_admin_key)  # Original
 | **Scalability** | Limited | High ✅ |
 
 **Result**: Businesses can now self-manage their AI knowledge base while maintaining complete data isolation! 🎉
+
+
+

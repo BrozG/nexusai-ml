@@ -4,6 +4,7 @@ User specifies domain directly → searches that folder → generates with LoRA
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List
@@ -40,9 +41,9 @@ class SimpleRAG:
         if not DEPENDENCIES_AVAILABLE:
             raise ImportError("Required dependencies not installed")
 
-        # Default to project root (parent of src/)
+        # Default to project root (two levels above src/ subpackages)
         if base_dir is None:
-            self.base_dir = Path(__file__).parent.parent
+            self.base_dir = Path(__file__).resolve().parents[2]
         else:
             self.base_dir = Path(base_dir)
 
@@ -73,6 +74,9 @@ class SimpleRAG:
         # Caches
         self.lora_adapters = {}
         self.vector_stores = {}
+
+        # Debug toggle for adapter usage logs
+        self.debug_adapters = os.getenv("NEXUSAI_DEBUG_ADAPTERS", "0").lower() in ("1", "true", "yes")
 
         print("✓ SimpleRAG initialized!\n")
 
@@ -145,6 +149,8 @@ class SimpleRAG:
     def _load_lora_adapter(self, domain: str):
         """Load LoRA adapter for domain."""
         if domain in self.lora_adapters:
+            if self.debug_adapters:
+                print(f"DEBUG - Reusing cached LoRA adapter: {domain}")
             return self.lora_adapters[domain]
 
         adapter_path = self.base_dir / "adapters" / f"{domain}_adapter"
@@ -169,7 +175,65 @@ class SimpleRAG:
         )
 
         self.lora_adapters[domain] = model
+        if self.debug_adapters:
+            print(f"DEBUG - LoRA adapter active for domain: {domain}")
         return model
+
+    def _clean_answer(self, text: str) -> str:
+        """Strip prompt echoes and leading punctuation from model output."""
+        if not text:
+            return ""
+
+        cleaned = text.strip()
+
+        if "Answer:" in cleaned:
+            cleaned = cleaned.split("Answer:")[-1].strip()
+
+        for prefix in ("Context information:", "Based on the context above", "Question:"):
+            if cleaned.startswith(prefix):
+                cleaned = "\n".join(cleaned.splitlines()[1:]).strip()
+
+        cleaned = cleaned.lstrip(" ,;:.-\n\t")
+        return cleaned
+
+    def _get_model_device(self, model):
+        """Best-effort device lookup for model tensors."""
+        if hasattr(model, "device"):
+            return model.device
+        return next(model.parameters()).device
+
+    def _generate_with_model(self, model, inputs, max_new_tokens: int, temperature: float) -> str:
+        """Generate and clean answer for a given model using prepared inputs."""
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=True,
+                top_p=0.9,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+
+        input_length = inputs['input_ids'].shape[1]
+        generated_tokens = outputs[0][input_length:]
+
+        full_response = self.tokenizer.decode(
+            outputs[0],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
+
+        generated_text = self.tokenizer.decode(
+            generated_tokens,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
+
+        answer = self._clean_answer(generated_text)
+        if len(answer) < 20:
+            answer = self._clean_answer(full_response)
+
+        return answer
 
     def generate(
         self,
@@ -177,8 +241,9 @@ class SimpleRAG:
         domain: str,
         company: str,
         top_k: int = 3,
-        max_new_tokens: int = 200,
-        temperature: float = 0.3
+        max_new_tokens: int = 150,
+        temperature: float = 0.7,
+        include_base: bool = False
     ) -> Dict:
         """
         Complete RAG: Search → Generate
@@ -204,94 +269,85 @@ class SimpleRAG:
         print("Step 1: Searching for relevant context...")
         context_chunks = self.search(query, domain, company, top_k)
 
-        # Build context string from all retrieved chunks
-        # Combine multiple chunks for comprehensive context
-        if not context_chunks:
-            context = "No relevant information found."
-        else:
-            # Use all top_k chunks, ordered by relevance
-            context = "\n\n".join([
-                f"[Source: {chunk['source']}]\n{chunk['text']}"
-                for chunk in context_chunks
-            ])
+        # Build context string
+        context = "\n\n".join([
+            f"[Source: {chunk['source']}]\n{chunk['text']}"
+            for chunk in context_chunks
+        ])
 
         print(f"✓ Found {len(context_chunks)} relevant chunks\n")
 
-        # Step 2: Load LoRA adapter for domain-specific knowledge
+        # Step 2: Load LoRA adapter
         print("Step 2: Loading LoRA adapter...")
         model = self._load_lora_adapter(domain)
         print("✓ Adapter loaded\n")
+        if self.debug_adapters:
+            print(f"DEBUG - Adapter applied for request: domain={domain}, company={company}")
 
         # Step 3: Generate response
         print("Step 3: Generating response...")
 
-        # Build prompt matching the training format (instruction-input-output)
-        # The adapters were trained with this specific format
-        prompt = f"""Instruction: Answer the following question using the context provided.
+        # Build prompt with context trimmed to keep the Answer marker in-window
+        max_input_tokens = 1024
+        prefix = "Context information:\n"
+        suffix = (
+            "\n\nBased on the context above, answer the following question:\n"
+            f"Question: {query}\n"
+            "Answer:"
+        )
 
-Context: {context}
+        base_tokens = self.tokenizer.encode(prefix + suffix, add_special_tokens=False)
+        available = max_input_tokens - len(base_tokens)
+        if available < 0:
+            available = 0
 
-Input: {query}
+        context_tokens = self.tokenizer.encode(context, add_special_tokens=False)
+        if len(context_tokens) > available:
+            context_tokens = context_tokens[:available]
 
-Output:"""
+        trimmed_context = self.tokenizer.decode(
+            context_tokens,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
+
+        prompt = f"{prefix}{trimmed_context}{suffix}"
 
         print(f"DEBUG - Prompt length: {len(prompt)} chars")
         print(f"DEBUG - Context chunks found: {len(context_chunks)}")
         print(f"DEBUG - First context chunk: {context_chunks[0] if context_chunks else 'NONE'}")
 
-        # Tokenize with sufficient context window for multiple chunks
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
-        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        # Tokenize (prompt already trimmed to max_input_tokens)
+        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=False)
+        adapter_device = self._get_model_device(model)
+        inputs_adapter = {k: v.to(adapter_device) for k, v in inputs.items()}
         
         print(f"DEBUG - Input token count: {inputs['input_ids'].shape[1]}")
 
-        # Generate with stricter parameters
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
+        # Generate (adapter)
+        answer = self._generate_with_model(
+            model,
+            inputs_adapter,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature
+        )
+
+        base_answer = None
+        if include_base:
+            print("Step 4: Generating base model response...")
+            base_device = self._get_model_device(self.base_model)
+            inputs_base = {k: v.to(base_device) for k, v in inputs.items()}
+            base_answer = self._generate_with_model(
+                self.base_model,
+                inputs_base,
                 max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                do_sample=temperature > 0,
-                top_p=0.95,
-                repetition_penalty=1.15,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
+                temperature=temperature
             )
         
-        print(f"DEBUG - Output token count: {outputs.shape[1]}")
-
-        # Decode full output and just the generated part
-        full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        # Decode only the newly generated tokens (excluding input)
-        input_length = inputs['input_ids'].shape[1]
-        generated_tokens = outputs[0][input_length:]
-        answer = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
-        
-        # Clean up the answer - remove incomplete sentences at the start
-        # Sometimes the model outputs partial text from context
-        if answer and not answer[0].isupper() and not answer[0].isdigit():
-            # Find the first sentence that starts properly
-            sentences = answer.split('. ')
-            for i, sent in enumerate(sentences):
-                sent = sent.strip()
-                if sent and (sent[0].isupper() or sent[0].isdigit() or sent[0] == '"'):
-                    answer = '. '.join(sentences[i:])
-                    break
-        
-        # Remove trailing incomplete sentences
-        if answer and not answer.endswith(('.', '!', '?', '"')):
-            last_period = answer.rfind('.')
-            last_question = answer.rfind('?')
-            last_exclaim = answer.rfind('!')
-            last_punct = max(last_period, last_question, last_exclaim)
-            if last_punct > len(answer) * 0.5:  # Only trim if we keep at least half
-                answer = answer[:last_punct + 1]
-        
-        print(f"DEBUG - Full model output length: {len(full_response)} chars")
-        print(f"DEBUG - Full output preview: {full_response[:500]}")
         print(f"DEBUG - Generated answer: {answer[:200]}")
-        
+        if base_answer is not None:
+            print(f"DEBUG - Base model answer: {base_answer[:200]}")
+
         print(f"DEBUG - Final answer length: {len(answer)} chars")
 
         print("✓ Generated!\n")
@@ -305,7 +361,8 @@ Output:"""
             "company": company,
             "context_chunks": context_chunks,
             "context": context,
-            "answer": answer
+            "answer": answer,
+            "base_answer": base_answer
         }
 
 
@@ -381,3 +438,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n⚠️  Generation failed: {e}")
         print("This is expected if Phi-2 model isn't downloaded yet.")
+

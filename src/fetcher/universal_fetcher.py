@@ -48,9 +48,9 @@ class UniversalFetcher:
     """Handles web scraping, content tracking, and automatic updates."""
 
     def __init__(self, base_dir: str = None):
-        # Default to project root (parent of src/)
+        # Default to project root (two levels above src/ subpackages)
         if base_dir is None:
-            self.base_dir = Path(__file__).parent.parent
+            self.base_dir = Path(__file__).resolve().parents[2]
         else:
             self.base_dir = Path(base_dir)
         
@@ -375,16 +375,16 @@ def main():
         epilog="""
 Examples:
   # Fetch a single URL
-  python universal_fetcher.py --domain ecommerce --company amazon --input https://example.com/faq
+  python src/fetcher/universal_fetcher.py --domain ecommerce --company amazon --input https://example.com/faq
 
   # Check all tracked URLs for updates
-  python universal_fetcher.py --check-updates
+  python src/fetcher/universal_fetcher.py --check-updates
 
   # Start scheduler for nightly updates
-  python universal_fetcher.py --scheduler
+  python src/fetcher/universal_fetcher.py --scheduler
 
   # List all tracked URLs
-  python universal_fetcher.py --list
+  python src/fetcher/universal_fetcher.py --list
         """
     )
 
@@ -441,3 +441,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

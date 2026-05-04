@@ -9,7 +9,7 @@
                                     │ X-API-Key Header
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        MAIN.PY (FastAPI Server)                     │
+│                    src/server/main.py (FastAPI Server)              │
 │                                                                     │
 │  ┌────────────────────┐                                            │
 │  │  Authentication    │  Validates API key                         │
@@ -34,9 +34,9 @@
 ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │  SENTIMENT ANALYSIS  │  │   RAG PIPELINE   │  │  ADMIN ACTIONS   │
 │                      │  │                  │  │                  │
-│  RoBERTa Model       │  │  simple_rag.py   │  │  pdf_handler.py  │
-│  (Pre-loaded)        │  │                  │  │  universal_      │
-│                      │  │  1. Search       │  │  fetcher.py      │
+│  RoBERTa Model       │  │  src/rag/simple_rag.py   │  │  src/ingest/pdf_handler.py  │
+│  (Pre-loaded)        │  │                  │  │  src/fetcher/    │
+│                      │  │  1. Search       │  │  src/fetcher/universal_fetcher.py │
 │  Input: User query   │  │     FAISS index  │  │                  │
 │  Output: Sentiment   │  │  2. Load LoRA    │  │  - Upload docs   │
 │        + Confidence  │  │  3. Generate     │  │  - Scrape URLs   │
@@ -149,15 +149,15 @@
 1. User sends POST /api/chat
    Headers: X-API-Key: sk_ecommerce_amazon_abc123
    Body: {"query": "How do I return an item?"}
-   
+
 2. FastAPI validates API key
    → Extracts: domain="ecommerce", company="amazon"
-   
+
 3. Sentiment Analysis
    → Input: "How do I return an item?"
    → Output: ("neutral", 0.92)
-   
-4. RAG Pipeline (simple_rag.py)
+
+4. RAG Pipeline (src/rag/simple_rag.py)
    ├─ a. Load vector store: data/vector_stores/ecommerce/amazon/
    ├─ b. Encode query to 384-dim vector
    ├─ c. Search FAISS index (top-k=3)
@@ -165,7 +165,7 @@
    ├─ e. Load LoRA adapter: adapters/ecommerce_adapter/
    ├─ f. Build prompt with context
    └─ g. Generate with Phi-2 + LoRA
-   
+
 5. Response Assembly
    {
      "query": "How do I return an item?",
@@ -177,12 +177,12 @@
      "response_time_ms": 1250.5,
      "timestamp": "2026-03-27T10:30:00"
    }
-   
+
 6. Logging
    → Write to logs/api.log:
-     "Chat request - Domain: ecommerce, Company: amazon, 
+     "Chat request - Domain: ecommerce, Company: amazon,
       Sentiment: neutral (0.920), Response time: 1250.52ms"
-   
+
 7. Return JSON response to client
 ```
 
@@ -194,22 +194,22 @@
 1. Admin sends POST /admin/upload-file
    Headers: X-API-Key: sk_admin_master_xyz999
    Body: FormData with file
-   
+
 2. FastAPI validates admin key
    → Checks if key in admin_keys list
-   
+
 3. pdf_handler.handle_pdf_with_original()
    ├─ a. Extract text from PDF/DOCX/TXT
    ├─ b. Save original: data/policies/ecommerce/amazon/refund.pdf
    └─ c. Save text: data/raw_data/ecommerce/amazon/pdf_refund.txt
-   
+
 4. Background Task: Rebuild Vector Store
    ├─ a. Vector builder detects new .txt file
    ├─ b. Chunks text (450 words, 50 overlap)
    ├─ c. Generate embeddings
    ├─ d. Build FAISS index
    └─ e. Save: data/vector_stores/ecommerce/amazon/vector.index
-   
+
 5. Response to client (immediate, doesn't wait for rebuild)
    {
      "success": true,
@@ -217,7 +217,7 @@
      "extracted_path": "data/raw_data/ecommerce/amazon/pdf_refund.txt",
      "characters_extracted": 5420
    }
-   
+
 6. Background rebuild completes (takes 5-30 seconds)
    → Logged: "✓ Vector store rebuilt for ecommerce/amazon"
 ```
@@ -264,7 +264,7 @@ Check: `GET /api/health` to see current state
 ### Horizontal Scaling
 ```bash
 # Run multiple workers
-gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker
+gunicorn src.server.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker
 ```
 
 ### Vertical Scaling
@@ -291,3 +291,6 @@ Each worker has:
 ---
 
 **This architecture enables NexusAI to handle thousands of requests per minute while maintaining sub-2-second response times!** 🚀
+
+
+
